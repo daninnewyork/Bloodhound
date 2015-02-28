@@ -4,7 +4,7 @@
 
     /**
      * @author Dan
-     * @date 10/31/2014
+     * @date 2015-02-28
      */
 
     var isTest = function isTest(uri) {
@@ -24,20 +24,9 @@
 
         requirejs.config({
             baseUrl: '/base/app/src',
-            paths: {
-                angular: '/base/app/bower_components/angular/angular',
-                'angular-mocks': '/base/app/bower_components/angular-mocks/angular-mocks'
-            },
             deps: specs,
-            shim: {
-                angular: {
-                    exports: 'angular'
-                },
-                'angular-mocks': {
-                    deps: ['angular', 'boot'],
-                    exports: 'angular.mock'
-                }
-            },
+            paths: {},
+            shim: {},
             callback: window.__karma__.start
         });
 
