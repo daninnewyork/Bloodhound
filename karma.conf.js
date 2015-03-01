@@ -12,9 +12,6 @@ module.exports = function(config) {
 
         files: [
             'test/config.js',
-            'app/bower_components/angular/angular.js',
-            'app/bower_components/angular-mocks/angular-mocks.js',
-            {pattern: 'app/bower_components/**/*.js', included: false},
             {pattern: 'app/src/**/*.js', included: false, watched: true},
             {pattern: 'test/**/*.js', included: false, watched: true}
         ],
@@ -26,7 +23,7 @@ module.exports = function(config) {
         autoWatch: true,
         singleRun: false,
 
-        reporters: ['story', 'coverage', 'brackets'],
+        reporters: ['story', 'coverage'],
 
         coverageReporter: {
             reporters: [
