@@ -43,6 +43,8 @@
             },
 
             RESOLVER = function RESOLVER(promise, x, parentValue) {
+                // NOTE: logic is based on the Promises/A+ spec
+                // found at https://promisesaplus.com/
                 if (!!promise && promise === x) {
                     promise._reject(new TypeError());
                 } else if (Promise.isPromise(x)) {
@@ -76,9 +78,12 @@
 
                 enabled : true,
                 useSaneTimings : false,
-
-                getEpochTime : function getEpochTime() {
+                epochMethod : Date.now ? Date.now : function getTime() {
                     return new Date().getTime();
+                },
+
+                getUTCEpochTime : function getUTCEpochTime() {
+                    return Timing.epochMethod();
                 },
 
                 anyActiveTracks : function anyActiveTracks(node) {
@@ -149,13 +154,14 @@
                 },
 
                 persistTimings : function persistTimings() {
-                    if (Timing.enabled) {
-                        var timing = Timing.getTimingData(this);
-                        if (!!timing) {
-                            collectors.forEach(function persist(collector) {
-                                collector.collect(timing);
-                            });
-                        }
+                    if (!Timing.enabled) {
+                        return;
+                    }
+                    var timing = Timing.getTimingData(this);
+                    if (!!timing) {
+                        collectors.forEach(function persist(collector) {
+                            collector.collect(timing);
+                        });
                     }
                 }
 
@@ -187,9 +193,9 @@
                 return function parentSettled(value) {
                     if (typeof callback === 'function') {
                         if (!child._trackName) {
-                            var cbName = callback.toString().match(/\s(\w+)/)[1];
-                            if (!!cbName) {
-                                child.trackAs(cbName, false);
+                            var cbName = callback.toString().match(/function\s(\w+)/);
+                            if (cbName instanceof Array) {
+                                child.trackAs(cbName.pop(), false);
                             }
                         }
                         try {
@@ -219,7 +225,7 @@
 
                     promise._data = data;
                     promise._state = state;
-                    promise._stop = Timing.getEpochTime();
+                    promise._stop = Timing.getUTCEpochTime();
                     promise._duration = promise._stop - promise._start;
 
                     var callbacks = state === States.RESOLVED ?
@@ -236,7 +242,6 @@
 
         /**
          * @todo document
-         * @todo unit test
          */
 
         function Promise(fn) {
@@ -272,7 +277,7 @@
             promise._notify = notify;
             promise._reject = reject;
             promise._resolve = resolve;
-            promise._start = Timing.getEpochTime();
+            promise._start = Timing.getUTCEpochTime();
             promise._parent = null;
             promise._children = [];
             promise._notifies = [];
@@ -571,6 +576,7 @@
                         throw new Error('Parameter `collector` must have a method called `collect`.');
                     }
                     collectors.push(collector);
+                    return Promise.config.collectors.remove.bind(null, collector);
                 },
 
                 remove : function removeCollector(collector) {

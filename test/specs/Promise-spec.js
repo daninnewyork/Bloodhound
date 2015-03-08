@@ -830,6 +830,23 @@ define(['Promise'], function(Promise) {
 
         describe('chain', function() {
 
+            beforeEach(function addUtilMethods() {
+                this.showChain = function showChain(promise) {
+                    var index = 0,
+                        target = promise,
+                        root = target._parent,
+                        log = function log(node) {
+                            console.log(new Array(++index).join('  ') + (node._trackName || 'anonymous'));
+                            node._children.forEach(log);
+                        };
+                    while (!!root) {
+                        target = root;
+                        root = target._parent;
+                    }
+                    log(target, 0);
+                };
+            });
+
             it('adds child to parent', function() {
                 var parent = Promise.resolve(),
                     child = parent.then();
@@ -873,8 +890,17 @@ define(['Promise'], function(Promise) {
                     });
             });
 
-            it('does not chain if parent is root of child ancestors', pending);
-            it('does not chain if child is already child of parent', pending);
+            it('does not chain if parent is ancestor of child', function(done) {
+                var parent = Promise.delay(20).trackAs('parent'),
+                    child = parent.then().trackAs('child');
+                child.then(function() {
+                    return parent;
+                }).finally(function() {
+                    expect(child._parent).toBe(parent);
+                    expect(parent._children.indexOf(child)).not.toBe(-1);
+                    done();
+                });
+            });
 
         });
 
@@ -882,16 +908,114 @@ define(['Promise'], function(Promise) {
 
             describe('setScheduler', function() {
 
-                it('throws if argument is not a function', pending);
-                it('sets async method', pending);
-                it('async method accepts arguments', pending);
+                it('throws if argument is not a function', function() {
+                    expect(Promise.config.setScheduler.bind(null)).toThrow();
+                    expect(Promise.config.setScheduler.bind(null, 123)).toThrow();
+                    expect(Promise.config.setScheduler.bind(null, 'abc')).toThrow();
+                });
+
+                it('sets async method', function(done) {
+                    Promise.config.setScheduler(function() {
+                        Promise.config.setScheduler(window.setTimeout);
+                        done();
+                    });
+                    Promise.delay(10);
+                });
 
             });
 
+            describe('collectors', function() {
+
+                describe('add', function() {
+
+                    it('adds collector', function(done) {
+                        var collector = {
+                            collect: function() {
+                                Promise.config.collectors.remove(collector);
+                                done();
+                            }
+                        };
+                        Promise.config.collectors.add(collector);
+                        Promise.delay(10).trackAs('promise').done();
+                    });
+
+                    it('returns method to remove the collector', function(done) {
+                        var collector = {
+                                collect: function() {
+                                    remove();
+                                    done();
+                                }
+                            },
+                            remove = Promise.config.collectors.add(collector);
+                        Promise.delay(10).trackAs('promise').done();
+                    });
+
+                    it('throws if argument falsy', function() {
+                        expect(Promise.config.collectors.add.bind(null)).toThrow();
+                        expect(Promise.config.collectors.add.bind(null, NaN)).toThrow();
+                        expect(Promise.config.collectors.add.bind(null, null)).toThrow();
+                        expect(Promise.config.collectors.add.bind(null, false)).toThrow();
+                    });
+
+                    it('throws if collect method not found', function() {
+                        expect(Promise.config.collectors.add.bind(null, {})).toThrow();
+                    });
+
+                });
+
+                describe('remove', function() {
+
+                    it('remove removes collector', function(done) {
+                        var collector = {
+                                collect: jasmine.createSpy('collect')
+                            },
+                            remove = Promise.config.collectors.add(collector);
+                        Promise.delay(10).trackAs('promise').done();
+                        var interval = setInterval(function() {
+                            if (collector.collect.calls.any()) {
+                                clearInterval(interval);
+                                remove();
+                                Promise.delay(10).trackAs('promise').done();
+                                setTimeout(function() {
+                                    if (collector.collect.calls.count() !== 1) {
+                                        throw new Error();
+                                    }
+                                    done();
+                                }, 50);
+                            }
+                        }, 10);
+                    });
+
+                    it('removing collector that DNE has no effect', function() {
+                        Promise.config.collectors.remove();
+                        Promise.config.collectors.remove(null);
+                        Promise.config.collectors.remove({});
+                        Promise.config.collectors.remove({collect: jasmine.unimplementedMethod_ });
+                    });
+
+                });
+
+            });
+
+
             describe('timing', function() {
 
-                it('enable enables timing', pending);
-                it('disable disables timing', pending);
+                it('disable disables timing', function(done) {
+                    Promise.config.timing.disable();
+                    var remove = Promise.config.collectors.add({
+                        collect: jasmine.unimplementedMethod_
+                    });
+                    Promise.delay(10).trackAs('promise').done().finally(remove).then(done);
+                });
+
+                it('enable enables timing', function(done) {
+                    Promise.config.timing.disable();
+                    Promise.config.timing.enable();
+                    var remove = Promise.config.collectors.add({
+                        collect: done
+                    });
+                    Promise.delay(10).trackAs('promise').done().finally(remove);
+                });
 
                 it('useSaneTimings works', function(done) {
                     var collector = {
@@ -917,22 +1041,6 @@ define(['Promise'], function(Promise) {
                 });
 
             });
-
-            describe('collectors', function() {
-
-                describe('add', function() {
-                    it('adds collector', pending);
-                    it('throws if argument falsy', pending);
-                    it('throws if collect method not found', pending);
-                });
-
-                describe('remove', function() {
-                    it('remove removes collector', pending);
-                    it('removing collector that DNE has no effect', pending);
-                });
-
-            });
-
         });
 
     });
