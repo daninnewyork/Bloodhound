@@ -51,6 +51,11 @@
                     }
                     x.then(promise._resolve, promise._reject);
                     chain(promise._parent || promise, x);
+                } else if (x === undefined) {
+                    if (parentValue instanceof Error) {
+                        parentValue = undefined;
+                    }
+                    promise._resolve(parentValue);
                 } else if (typeof x === 'function' || typeof x === 'object') {
                     try {
                         var next = x.then;
@@ -62,11 +67,6 @@
                     } catch (e) {
                         promise._reject(e);
                     }
-                } else if (x === undefined) {
-                    if (parentValue instanceof Error) {
-                        parentValue = undefined;
-                    }
-                    promise._resolve(parentValue);
                 } else {
                     promise._resolve(x);
                 }
@@ -75,56 +75,77 @@
             Timing = {
 
                 enabled : true,
+                useSaneTimings : false,
 
                 getEpochTime : function getEpochTime() {
                     return new Date().getTime();
                 },
 
+                anyActiveTracks : function anyActiveTracks(node) {
+                    return !!node._trackName && (!node._isPassive || node._children.some(Timing.anyActiveTracks));
+                },
+
+                addChildren : function addChildren(timing, children) {
+                    (children || []).forEach(function iter(child) {
+                        timing.children.push(Timing.getTimingTree(child));
+                    });
+                },
+
+                getTimingTree : function getTimingTree(node) {
+
+                    var timing = {
+                        name: node._trackName || 'anonymous',
+                        data: node._data,
+                        start: node._start,
+                        stop: node._stop,
+                        duration: node._duration,
+                        children: []
+                    };
+
+                    Timing.addChildren(timing, node._children);
+
+                    return timing;
+
+                },
+
                 getTimingData : function getTimingData(promise) {
 
-                    var root = promise,
-                        ancestor = root._parent,
-
-                        anyActiveTracks = function anyActiveTracks(node) {
-                            return !!node._trackName && (!node._isPassive || node._children.some(anyActiveTracks));
-                        },
-
-                        addChildren = function addChildren(timing, children) {
-                            (children || []).forEach(function iter(child) {
-                                var inner = getTimingTree(child);
-                                addChildren(inner, child._children);
-                                timing.children.push(inner);
-                            });
-                        },
-
-                        getTimingTree = function getTimingTree(node) {
-
-                            var timing = {
-                                name: node._trackName || 'anonymous',
-                                data: node._data,
-                                start: node._start,
-                                stop: node._stop,
-                                duration: node._duration,
-                                children: []
-                            };
-
-                            addChildren(timing, node._children);
-
-                            return timing;
-
-                        };
+                    var tree,
+                        root = promise,
+                        ancestor = root._parent;
 
                     while (!!ancestor) {
                         root = ancestor;
                         ancestor = root._parent;
                     }
 
-                    if (!root.isSettled() || !anyActiveTracks(root)) {
+                    if (!root.isSettled() || !Timing.anyActiveTracks(root)) {
                         return;
                     }
 
-                    return getTimingTree(root);
+                    tree = Timing. getTimingTree(root);
 
+                    if (Timing.useSaneTimings) {
+                        Timing.sanitize(tree);
+                    }
+
+                    return tree;
+
+                },
+
+                getMinStart : function getMinStartTime(timing) {
+                    return [timing.start].concat(timing.children.map(Timing.getMinStart)).sort().shift();
+                },
+
+                getMaxStop : function getMaxStopTime(timing) {
+                    return [timing.stop].concat(timing.children.map(Timing.getMaxStop)).sort().pop();
+                },
+
+                sanitize : function sanitize(timing) {
+                    timing.start = Timing.getMinStart(timing);
+                    timing.stop = Timing.getMaxStop(timing);
+                    timing.duration = Math.max(0, timing.stop - timing.start);
+                    timing.children.forEach(sanitize);
                 },
 
                 persistTimings : function persistTimings() {
@@ -150,13 +171,36 @@
                     ancestor = root._parent;
 
                 while (!!ancestor) {
+                    if (ancestor === parent) {
+                        return;
+                    }
                     root = ancestor;
                     ancestor = root._parent;
                 }
 
                 root._parent = parent;
-                parent._children = (parent._children || []).concat([root]);
+                parent._children.push(root);
 
+            },
+
+            wrapCallback = function wrapCallback(child, callback, propagate, reject) {
+                return function parentSettled(value) {
+                    if (typeof callback === 'function') {
+                        if (!child._trackName) {
+                            var cbName = callback.toString().match(/\s(\w+)/)[1];
+                            if (!!cbName) {
+                                child.trackAs(cbName, false);
+                            }
+                        }
+                        try {
+                            RESOLVER(child, callback(value), value);
+                        } catch (err) {
+                            reject(err);
+                        }
+                    } else {
+                        propagate(value);
+                    }
+                };
             },
 
             wrapPush = function wrapPush(promise, arr, state) {
@@ -250,24 +294,8 @@
 
             var parent = this,
                 child = new Promise(function ThenPromise(resolve, reject) {
-
-                    var wrapCallback = function wrapCallback(callback, propagate) {
-                        return function parentSettled(value) {
-                            if (typeof callback === 'function') {
-                                try {
-                                    RESOLVER(child, callback(value), value);
-                                } catch (err) {
-                                    reject(err);
-                                }
-                            } else {
-                                propagate(value);
-                            }
-                        };
-                    };
-
-                    parent._successes.push(wrapCallback(success, resolve));
-                    parent._failures.push(wrapCallback(failure, reject));
-
+                    parent._successes.push(wrapCallback(child, success, resolve, reject));
+                    parent._failures.push(wrapCallback(child, failure, reject, reject));
                 });
 
             if (typeof notify === 'function') {
@@ -334,49 +362,6 @@
         };
 
         /** utility methods **/
-
-        Promise.config = {
-
-            setScheduler : function setScheduler(scheduler) {
-                if (typeof scheduler !== 'function') {
-                    throw new TypeError('Parameter `scheduler` must be a function.');
-                }
-                async = function async(fn) {
-                    var args = [].slice.call(arguments, 1);
-                    scheduler.call(null, function invoke() {
-                        return fn.apply(null, args);
-                    });
-                };
-            },
-
-            timing : {
-
-                enable: function enableTiming() {
-                    Timing.enabled = true;
-                },
-
-                disable: function disableTiming() {
-                    Timing.enabled = false;
-                }
-
-            },
-
-            collectors : {
-
-                add : function addCollector(collector) {
-                    if (!collector || typeof collector.collect !== 'function') {
-                        throw new Error('Parameter `collector` must have a method called `collect`.');
-                    }
-                    collectors.push(collector);
-                },
-
-                remove : function removeCollector(collector) {
-                    collectors.splice(collectors.indexOf(collector), 1);
-                }
-
-            }
-
-        };
 
         Promise.isPromise = function isPromise(promise) {
             return promise instanceof Promise ||
@@ -546,6 +531,57 @@
         Promise.all = function all(promises) {
             return Promise.some(promises, promises.length);
         };
+
+        /** configuration **/
+
+        Promise.config = {
+
+            setScheduler : function setScheduler(scheduler) {
+                if (typeof scheduler !== 'function') {
+                    throw new TypeError('Parameter `scheduler` must be a function.');
+                }
+                async = function async(fn) {
+                    var args = [].slice.call(arguments, 1);
+                    scheduler.call(null, function invoke() {
+                        return fn.apply(null, args);
+                    });
+                };
+            },
+
+            timing : {
+
+                enable : function enableTiming() {
+                    Timing.enabled = true;
+                },
+
+                disable : function disableTiming() {
+                    Timing.enabled = false;
+                },
+
+                useSaneTimings : function useSaneTimings() {
+                    Timing.useSaneTimings = true;
+                }
+
+            },
+
+            collectors : {
+
+                add : function addCollector(collector) {
+                    if (!collector || typeof collector.collect !== 'function') {
+                        throw new Error('Parameter `collector` must have a method called `collect`.');
+                    }
+                    collectors.push(collector);
+                },
+
+                remove : function removeCollector(collector) {
+                    collectors.splice(collectors.indexOf(collector), 1);
+                }
+
+            }
+
+        };
+
+        // TODO: use global.MutationObserver as scheduler if available
 
         Promise.config.setScheduler(global.setTimeout);
 

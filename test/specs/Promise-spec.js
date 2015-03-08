@@ -256,9 +256,7 @@ define(['Promise'], function(Promise) {
             });
 
             it('callback only invoked if promise is resolved', function(done) {
-                Promise.reject('reason').tap(function() {
-                    throw new Error('never called');
-                });
+                Promise.reject('reason').tap(jasmine.unimplementedMethod_);
                 Promise.resolve('abc').tap(done);
             });
 
@@ -357,7 +355,7 @@ define(['Promise'], function(Promise) {
             it('does not throw error if rejection caught before done', function(done) {
                 Promise.reject('rejected').catch(function(reason) {
                     expect(reason).toBe('rejected');
-                }).done().finally(done);
+                }).done().then(done);
             });
 
             it('notifies collectors of timing if timing enabled', function(done) {
@@ -374,7 +372,7 @@ define(['Promise'], function(Promise) {
             });
 
             it('does not notify collectors if timing is not enabled', function(done) {
-                var collector = {collect: function() { throw new Error(); }};
+                var collector = {collect: jasmine.unimplementedMethod_};
                 Promise.config.collectors.add(collector);
                 Promise.config.timing.disable();
                 Promise.delay(50, 'value').done().finally(function() {
@@ -574,7 +572,7 @@ define(['Promise'], function(Promise) {
             });
 
             it('rejects promise with error if function throws', function(done) {
-                Promise.call(function() { throw new Error(); }).catch(function(err) {
+                Promise.call(jasmine.unimplementedMethod_).catch(function(err) {
                     expect(err instanceof Error).toBe(true);
                     done();
                 });
@@ -802,7 +800,9 @@ define(['Promise'], function(Promise) {
                         expect(timingData.children[2].name).toBe('anonymous');
                         expect(timingData.children[0].children.length).toBe(0);
                         expect(timingData.children[1].children.length).toBe(0);
-                        expect(timingData.children[2].children.length).toBe(0);
+                        expect(timingData.children[2].children.length).toBe(1);
+                        expect(timingData.children[2].children[0].name).toBe('hello');
+                        Promise.config.collectors.remove(collector);
                         done();
                     }
                 };
@@ -810,7 +810,7 @@ define(['Promise'], function(Promise) {
                 Promise.all([
                     Promise.resolve('abc').trackAs('child-1', true).done(),
                     Promise.delay(30, 'def').trackAs('child-2', true),
-                    Promise.delay(20, 'ghi')
+                    Promise.delay(20, 'ghi').then(function hello() {})
                 ]).trackAs('active-parent').done();
             });
 
@@ -892,6 +892,29 @@ define(['Promise'], function(Promise) {
 
                 it('enable enables timing', pending);
                 it('disable disables timing', pending);
+
+                it('useSaneTimings works', function(done) {
+                    var collector = {
+                        collect: function(timingData) {
+                            var getMinMax = function getMinMax(timing, prop, op) {
+                                    return timing.children.map(function map(t) {
+                                        return t[prop];
+                                    }).sort()[op]();
+                                },
+                                minChildStart = getMinMax(timingData, 'start', 'shift'),
+                                maxChildStop = getMinMax(timingData, 'stop', 'pop');
+                            expect(timingData.start).not.toBeGreaterThan(minChildStart);
+                            expect(timingData.stop).not.toBeLessThan(maxChildStop);
+                            Promise.config.collectors.remove(collector);
+                            done();
+                        }
+                    };
+                    Promise.config.timing.useSaneTimings();
+                    Promise.config.collectors.add(collector);
+                    Promise.all([
+                        Promise.delay(20).trackAs('child').then(function grandchild() {})
+                    ]).trackAs('parent').done();
+                });
 
             });
 
