@@ -15,6 +15,21 @@ define(['Promise'], function(Promise) {
 
     describe('Promise', function() {
 
+        beforeEach(function() {
+            this.enableSync = function enableSync() {
+                this.origScheduler = window.setTimeout;
+                Promise.config.setScheduler(function scheduler(fn) {
+                    return fn.apply(null, [].slice.call(arguments, 1));
+                });
+            }.bind(this);
+        });
+
+        afterEach(function() {
+            if (!!this.origScheduler) {
+                Promise.config.setScheduler(this.origScheduler);
+            }
+        });
+
         it('exists', function() {
             expect(typeof Promise).toBe('function');
         });
@@ -261,11 +276,6 @@ define(['Promise'], function(Promise) {
 
         describe('finally', function() {
 
-            it('is alias of last', function() {
-                var promise = Promise.resolve();
-                expect(promise.finally).toBe(promise.last);
-            });
-
             it('calls then with callback, callback', function() {
                 var promise = Promise.resolve(),
                     callback = function() {};
@@ -335,29 +345,19 @@ define(['Promise'], function(Promise) {
 
         describe('done', function() {
 
-            // FIXME: don't know how to test this without screwing up other tests
-            xit('throws error if promise rejected', function(done) {
-                Promise.config.setScheduler(function(fn) {
-                    try {
-                        fn();
-                    } catch (err) {
-                        expect(err.message).toBe('rejected');
-                        done();
-                    }
-                });
-                Promise.reject('rejected').done();
+            it('throws error if promise rejected', function() {
+                this.enableSync();
+                try {
+                    Promise.reject('rejected').done();
+                } catch (err) {
+                    expect(err.message).toBe('rejected');
+                }
             });
 
-            // FIXME: don't know how to test this without screwing up other tests
-            xit('does not throw error if rejection caught before done', function(done) {
-                Promise.config.setScheduler(function(fn) {
-                    fn();
-                });
+            it('does not throw error if rejection caught before done', function(done) {
                 Promise.reject('rejected').catch(function(reason) {
                     expect(reason).toBe('rejected');
-                    done();
-                }).done();
-                Promise.config.setScheduler(window.setTimeout.bind(window));
+                }).done().finally(done);
             });
 
             it('notifies collectors of timing if timing enabled', function(done) {
@@ -830,11 +830,49 @@ define(['Promise'], function(Promise) {
 
         describe('chain', function() {
 
-            it('adds child to parent', pending);
-            it('adds root of child to parent', pending);
-            it('throws if child is parent', pending);
-            it('throws if child is ancestor of parent', pending);
-            it('does not chain if parent in child ancestors', pending);
+            it('adds child to parent', function() {
+                var parent = Promise.resolve(),
+                    child = parent.then();
+                expect(child._parent).toBe(parent);
+                expect(parent._children.indexOf(child)).not.toBe(-1);
+            });
+
+            it('adds root of child to parent', function(done) {
+
+                var parent = Promise.resolve(),
+                    root = Promise.resolve().trackAs('root'),
+                    child = root.then().then().then();
+
+                parent.then(function() {
+                    return child;
+                }).finally(function() {
+                    expect(root._parent).toBe(parent);
+                    done();
+                });
+
+            });
+
+            it('throws if child is ancestor of parent', function(done) {
+                var ancestor = Promise.delay(20),
+                    parent = ancestor.then(function() {
+                        return parent;
+                    }).catch(function(err) {
+                        expect(err.message).toBe('Cycle created in promise chain.');
+                        done();
+                    });
+            });
+
+            it('does not chain if parent is child', function(done) {
+                var parent = Promise.delay(20),
+                    chained = parent.then(function() {
+                        return parent;
+                    }).finally(function() {
+                        expect(parent._parent).toBe(null);
+                        expect(chained._children.length).toBe(0);
+                        done();
+                    });
+            });
+
             it('does not chain if parent is root of child ancestors', pending);
             it('does not chain if child is already child of parent', pending);
 
@@ -859,10 +897,16 @@ define(['Promise'], function(Promise) {
 
             describe('collectors', function() {
 
-                it('add adds collector', pending);
-                it('add throws if collect method not found', pending);
-                it('remove removes collector', pending);
-                it('removing collector that DNE has no effect', pending);
+                describe('add', function() {
+                    it('adds collector', pending);
+                    it('throws if argument falsy', pending);
+                    it('throws if collect method not found', pending);
+                });
+
+                describe('remove', function() {
+                    it('remove removes collector', pending);
+                    it('removing collector that DNE has no effect', pending);
+                });
 
             });
 

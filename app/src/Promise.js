@@ -5,7 +5,6 @@
     define([], function() {
 
         var async,
-            timingEnabled = true,
             collectors = [],
 
             States = {
@@ -14,11 +13,44 @@
                 REJECTED: 2
             },
 
+            noop = function noop() {},
+
+            err = function err(reason) {
+                async(function throwError() {
+                    throw new Error(reason);
+                });
+            },
+
+            Cycle = {
+
+                inChildren : function inChildren(toCheck, promise) {
+                    return promise._children.indexOf(toCheck) !== -1 ||
+                        promise._children.some(inChildren.bind(null, toCheck));
+                },
+
+                inParents : function inParents(toCheck, promise) {
+                    return !!promise._parent && (
+                        promise._parent === toCheck || inParents(toCheck, promise._parent)
+                    );
+                },
+
+                inChain : function inChain(toCheck, promise) {
+                    return toCheck === promise ||
+                        Cycle.inParents(toCheck, promise) ||
+                        Cycle.inChildren(toCheck, promise);
+                },
+
+            },
+
             RESOLVER = function RESOLVER(promise, x, parentValue) {
-                if (promise === x) {
+                if (!!promise && promise === x) {
                     promise._reject(new TypeError());
                 } else if (Promise.isPromise(x)) {
+                    if (Cycle.inChain(x, promise)) {
+                        throw new Error('Cycle created in promise chain.');
+                    }
                     x.then(promise._resolve, promise._reject);
+                    chain(promise._parent || promise, x);
                 } else if (typeof x === 'function' || typeof x === 'object') {
                     try {
                         var next = x.then;
@@ -40,104 +72,122 @@
                 }
             },
 
-            persistTimings = function persistTimings() {
-                if (timingEnabled) {
-                    var timing = getTimingData(this);
-                    if (!!timing) {
-                        collectors.forEach(function persist(collector) {
-                            collector.collect(timing);
-                        });
-                    }
-                }
-            },
+            Timing = {
 
-            err = function err(reason) {
-                async(function throwError() {
-                    throw new Error(reason);
-                });
-            },
+                enabled : true,
 
-            getEpochTime = function getEpochTime() {
-                return new Date().getTime();
-            },
+                getEpochTime : function getEpochTime() {
+                    return new Date().getTime();
+                },
 
-            getTimingData = function getTimingData(promise) {
+                getTimingData : function getTimingData(promise) {
 
-                var root = promise,
-                    ancestor = root._parent,
+                    var root = promise,
+                        ancestor = root._parent,
 
-                    anyActiveTracks = function anyActiveTracks(node) {
-                        return !!node._trackName && (!node._isPassive || node._children.some(anyActiveTracks));
-                    },
+                        anyActiveTracks = function anyActiveTracks(node) {
+                            return !!node._trackName && (!node._isPassive || node._children.some(anyActiveTracks));
+                        },
 
-                    addChildren = function addChildren(timing, children) {
-                        children = children || [];
-                        children.forEach(function iter(child) {
-                            var inner = getTimingTree(child);
-                            addChildren(inner, child._children);
-                            timing.children.push(inner);
-                        });
-                    },
+                        addChildren = function addChildren(timing, children) {
+                            (children || []).forEach(function iter(child) {
+                                var inner = getTimingTree(child);
+                                addChildren(inner, child._children);
+                                timing.children.push(inner);
+                            });
+                        },
 
-                    getTimingTree = function getTimingTree(node) {
+                        getTimingTree = function getTimingTree(node) {
 
-                        var timing = {
-                            name: node._trackName || 'anonymous',
-                            data: node._data,
-                            start: node._start,
-                            stop: node._stop,
-                            duration: node._duration,
-                            children: []
+                            var timing = {
+                                name: node._trackName || 'anonymous',
+                                data: node._data,
+                                start: node._start,
+                                stop: node._stop,
+                                duration: node._duration,
+                                children: []
+                            };
+
+                            addChildren(timing, node._children);
+
+                            return timing;
+
                         };
 
-                        addChildren(timing, node._children);
+                    while (!!ancestor) {
+                        root = ancestor;
+                        ancestor = root._parent;
+                    }
 
-                        return timing;
+                    if (!root.isSettled() || !anyActiveTracks(root)) {
+                        return;
+                    }
 
-                    };
+                    return getTimingTree(root);
 
-                while (!!ancestor) {
-                    root = ancestor;
-                    ancestor = root._parent;
+                },
+
+                persistTimings : function persistTimings() {
+                    if (Timing.enabled) {
+                        var timing = Timing.getTimingData(this);
+                        if (!!timing) {
+                            collectors.forEach(function persist(collector) {
+                                collector.collect(timing);
+                            });
+                        }
+                    }
                 }
-
-                if (!root.isSettled() || !anyActiveTracks(root)) {
-                    return;
-                }
-
-                return getTimingTree(root);
 
             },
 
             chain = function chain(parent, child) {
 
-                var root = child,
-                    ancestor = root._parent,
-                    target = parent._parent;
-
-                while (!!target) {
-                    if (target === child) {
-                        throw new Error('`child` is already an ancestor of `parent`.');
-                    }
-                    target = target._parent;
+                if (Cycle.inChain(parent, child)) {
+                    return;
                 }
 
+                var root = child,
+                    ancestor = root._parent;
+
                 while (!!ancestor) {
-                    if (ancestor === parent) {
-                        return;
-                    }
                     root = ancestor;
                     ancestor = root._parent;
                 }
 
-                if (root === parent || parent._children.indexOf(root) !== -1) {
-                    return;
-                }
-
                 root._parent = parent;
-                parent._children = parent._children || [];
-                parent._children.push(root);
+                parent._children = (parent._children || []).concat([root]);
 
+            },
+
+            wrapPush = function wrapPush(promise, arr, state) {
+                arr.push = function push(fn) {
+                    if (promise._state === state) {
+                        async(fn, promise._data);
+                    } else {
+                        Array.prototype.push.call(arr, fn);
+                    }
+                };
+                return arr;
+            },
+
+            settle = function settle(promise, state, data) {
+                if (promise._state === States.PENDING) {
+
+                    promise._data = data;
+                    promise._state = state;
+                    promise._stop = Timing.getEpochTime();
+                    promise._duration = promise._stop - promise._start;
+
+                    var callbacks = state === States.RESOLVED ?
+                        promise._successes : promise._failures;
+
+                    callbacks.forEach(function iter(callback) {
+                        async(function doCallback() {
+                            callback(promise._data);
+                        });
+                    });
+
+                }
             };
 
         /**
@@ -151,79 +201,48 @@
                 return new Promise(fn);
             }
 
+            if (typeof fn !== 'function') {
+                throw new Error('Promise constructor expects a function.');
+            }
+
             var promise = this,
-
-                settle = function settle(state, data) {
-                    if (promise._state === States.PENDING) {
-
-                        promise._data = data;
-                        promise._state = state;
-                        promise._stop = getEpochTime();
-                        promise._duration = promise._stop - promise._start;
-
-                        var callbacks = state === States.RESOLVED ?
-                            promise._successes : promise._failures;
-
-                        callbacks.forEach(function iter(callback) {
-                            async(function doCallback() {
-                                callback(promise._data);
-                            });
-                        });
-
-                    }
-                },
 
                 resolve = function resolver(value) {
                     if (value instanceof Error) {
-                        settle(States.REJECTED, value);
+                        settle(promise, States.REJECTED, value);
                     } else {
-                        settle(States.RESOLVED, value);
+                        settle(promise, States.RESOLVED, value);
                     }
                 },
 
                 reject = function rejecter(reason) {
-                    settle(States.REJECTED, reason);
+                    settle(promise, States.REJECTED, reason);
                 },
 
                 notify = function notify(data) {
                     promise._notifies.forEach(function iter(notifier) {
                         notifier(data);
                     });
-                },
-
-                wrapPush = function wrapPush(arr, state) {
-                    arr.push = function push(fn) {
-                        if (promise._state === state) {
-                            async(fn, promise._data);
-                        } else {
-                            Array.prototype.push.call(arr, fn);
-                        }
-                    };
-                    return arr;
                 };
 
             promise._notify = notify;
             promise._reject = reject;
             promise._resolve = resolve;
-            promise._start = getEpochTime();
+            promise._start = Timing.getEpochTime();
             promise._parent = null;
             promise._children = [];
             promise._notifies = [];
-            promise._successes = wrapPush([], States.RESOLVED);
-            promise._failures = wrapPush([], States.REJECTED);
+            promise._successes = wrapPush(promise, [], States.RESOLVED);
+            promise._failures = wrapPush(promise, [], States.REJECTED);
             promise._state = States.PENDING;
 
-            if (typeof fn === 'function') {
-                async(function invoke() {
-                    try {
-                        fn.bind(promise)(resolve, reject, notify);
-                    } catch (err) {
-                        reject(err);
-                    }
-                });
-            } else {
-                throw new Error('Promise constructor expects a function.');
-            }
+            async(function invoke() {
+                try {
+                    fn.call(promise, resolve, reject, notify);
+                } catch (err) {
+                    reject(err);
+                }
+            });
 
         }
 
@@ -275,7 +294,7 @@
             });
         };
 
-        Promise.prototype.finally = Promise.prototype.last = function onSettled(callback) {
+        Promise.prototype.finally = function onSettled(callback) {
             return this.then(callback, callback);
         };
 
@@ -301,9 +320,10 @@
         };
 
         Promise.prototype.done = function done() {
+            var persist = Timing.persistTimings.bind(this);
             this._failures.push(err);
-            this._failures.push(persistTimings.bind(this));
-            this._successes.push(persistTimings.bind(this));
+            this._failures.push(persist);
+            this._successes.push(persist);
             return this;
         };
 
@@ -332,11 +352,11 @@
             timing : {
 
                 enable: function enableTiming() {
-                    timingEnabled = true;
+                    Timing.enabled = true;
                 },
 
                 disable: function disableTiming() {
-                    timingEnabled = false;
+                    Timing.enabled = false;
                 }
 
             },
@@ -364,20 +384,20 @@
         };
 
         Promise.resolve = function resolve(value) {
-            var promise = new Promise(function() {});
+            var promise = new Promise(noop);
             promise._resolve(value);
             return promise;
         };
 
         Promise.reject = function reject(reason) {
-            var promise = new Promise(function() {});
+            var promise = new Promise(noop);
             promise._reject(reason);
             return promise;
         };
 
         Promise.defer = function defer() {
 
-            var promise = new Promise(function DeferPromise() {});
+            var promise = new Promise(noop);
 
             return {
                 promise: promise,
@@ -410,7 +430,7 @@
 
         Promise.call = function callMethod(fn) {
             if (typeof fn !== 'function') {
-                throw new TypeError('Method `try` expects a function to be specified.');
+                throw new TypeError('Method `call` expects a function to be specified.');
             }
             var args = [].slice.call(arguments, 1);
             return new Promise(function TryPromise(resolve, reject) {
@@ -425,9 +445,15 @@
         /** array methods **/
 
         function getArrayPromise(promises, resolver) {
+
+            if (!(promises instanceof Array) || !promises.every(Promise.isPromise)) {
+                throw new TypeError('This method expects an array of promises.');
+            }
+
             var parent = new Promise(resolver);
             promises.forEach(chain.bind(null, parent));
             return parent;
+
         }
 
         Promise.settle = function settle(promises) {
@@ -472,10 +498,6 @@
 
         Promise.some = function some(promises, count) {
 
-            if (!(promises instanceof Array)) {
-                throw new TypeError('Promise.some expects an array to be provided.');
-            }
-
             if (typeof count !== 'number' || count !== count) {
                 throw new TypeError('Promise.some expects a numeric count to be provided.');
             }
@@ -517,12 +539,12 @@
 
         };
 
-        Promise.all = function all(promises) {
-            return Promise.some(promises, promises.length);
-        };
-
         Promise.any = function any(promises) {
             return Promise.some(promises, 1);
+        };
+
+        Promise.all = function all(promises) {
+            return Promise.some(promises, promises.length);
         };
 
         Promise.config.setScheduler(global.setTimeout);
