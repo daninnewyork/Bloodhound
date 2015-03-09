@@ -1,0 +1,43 @@
+{
+  "name": "Bloodhound",
+  "version": "0.0.1",
+  "description": "Promise implementation with built-in timing data.",
+  "main": "app/src/Promise.js",
+  "directories": {
+    "test": "test"
+  },
+  "keywords": [
+    "promise",
+    "tracking",
+    "timing",
+    "performance",
+    "async"
+  ],
+  "author": "Dan Barnes",
+  "license": "MIT",
+  "devDependencies": {
+    "jsdoc": "^3.3.0-alpha10",
+    "karma": "^0.12.23",
+    "karma-cli": "0.0.4",
+    "karma-coverage": "^0.2.6",
+    "karma-jasmine": "^0.2.2",
+    "karma-junit-reporter": "^0.2.2",
+    "karma-phantomjs-launcher": "^0.1.4",
+    "karma-requirejs": "^0.2.2",
+    "karma-story-reporter": "^0.2.2",
+    "requirejs": "^2.1.15"
+  },
+  "scripts": {
+    "prestart": "npm install",
+    "pretest": "npm install",
+    "test": "karma start karma.conf.js",
+    "test-single-run": "karma start karma.conf.js  --single-run",
+    "preupdate-webdriver": "npm install",
+    "doc": "./node_modules/.bin/jsdoc -d build/dev/doc -r -c ./jsdoc.conf.json -P ./package.json app/src"
+  },
+  "jscsConfig": {
+    "validateIndentation": 4,
+    "validateLineBreaks": "CRLF",
+    "safeContextKeyword": "self"
+  }
+}
