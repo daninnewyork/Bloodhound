@@ -1,6 +1,6 @@
 {
-  "name": "TrackedPromise",
-  "version": "0.0.0",
+  "name": "Bloodhound",
+  "version": "0.0.1",
   "description": "Promise implementation with built-in timing data.",
   "main": "app/src/Promise.js",
   "directories": {
