@@ -91,7 +91,7 @@ define(['Promise'], function(Promise) {
                     notify(values[1]);
                     notify(values[2]);
                     notify(values[3]);
-                }).notify(function(value) {
+                }).notified(function(value) {
                     expect(value).toBe(values[index++]);
                     if (index === values.length) {
                         done();
@@ -239,7 +239,7 @@ define(['Promise'], function(Promise) {
                 var promise = Promise.resolve(),
                     callback = function() {};
                 spyOn(promise, 'then');
-                promise.notify(callback);
+                promise.notified(callback);
                 expect(promise.then).toHaveBeenCalledWith(null, null, callback);
             });
 
@@ -253,6 +253,18 @@ define(['Promise'], function(Promise) {
                 spyOn(promise, 'then');
                 promise.tap(callback);
                 expect(typeof promise.then.calls.argsFor(0)[0]).toBe('function');
+            });
+
+            it('ignores non-function callback arguments', function(done) {
+                Promise.resolve('abc')
+                    .tap(null)
+                    .tap(undefined)
+                    .tap(NaN)
+                    .tap({})
+                    .then(function(value) {
+                        expect(value).toBe('abc');
+                        done();
+                    });
             });
 
             it('callback only invoked if promise is resolved', function(done) {
@@ -462,7 +474,7 @@ define(['Promise'], function(Promise) {
 
             it('calling notify notifies callbacks with specified data', function(done) {
                 var defer = Promise.defer();
-                defer.promise.notify(function(data) {
+                defer.promise.notified(function(data) {
                     expect(data).toBe(123);
                     done();
                 });
@@ -525,6 +537,10 @@ define(['Promise'], function(Promise) {
         });
 
         describe('delay', function() {
+
+            it('is alias of wait', function() {
+                expect(Promise.delay).toBe(Promise.wait);
+            });
 
             it('resolves after specified ms', function(done) {
                 var promise = Promise.delay(100);
@@ -745,6 +761,21 @@ define(['Promise'], function(Promise) {
         });
 
         describe('spread', function() {
+
+            it('ignores non-function callbacks', function(done) {
+                Promise.all([
+                    Promise.delay(10, 'abc'),
+                    Promise.delay(20, 'def')
+                ])  .spread(null)
+                    .spread(new Date())
+                    .spread(NaN)
+                    .spread({})
+                    .then(function(values) {
+                        expect(values[0]).toBe('abc');
+                        expect(values[1]).toBe('def');
+                        done();
+                    });
+            });
 
             it('passes resolved array as parameters', function(done) {
                 Promise.all([
