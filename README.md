@@ -27,17 +27,19 @@ Enter Bloodhound.
 ## How?
 
 Bloodhound promises work just like regular promises (in fact, it fully implements the
-(https://promisesaplus.com/)[A+ spec]), with a lot of the syntactic sugar that other promise
+[https://promisesaplus.com/](A+ spec)), with a lot of the syntactic sugar that other promise
 implementations have popularized.
 
 But unlike other promise libraries, Bloodhound also adds the following instance methods:
 
-`Promise#trackAs(name [, passive]) : Promise`
+`promise.trackAs(name [, passive]) : Promise`
+
 Marks the promise instance as a tracked promise, and then returns that instance for chaining.
 Optionally, you can say the promise is passively tracked. What that means will be explained
 below.
 
-`Promise#done() : Promise`
+`promise.done() : Promise`
+
 Not all promise libraries have a done method, but it's vital to using promises correctly.
 Basically, the golden rule of promises is:
 
@@ -70,18 +72,20 @@ Let's look at an example that combines the two new methods:
     ]).trackAs('loading').done();
 
 What does the code do? Both `loadMessages` and `loadAppData` return a promise that would
-be resolved once their data calls completed. But before the promise is returned, it is
-passively tracked with an appropriate name. Because the promise is being returned, we do
-not call `done()` -- someone else will be consuming our promise, so we can't throw any
-unhandled errors just yet.
+be resolved once their data calls completed. But before the promises are returned, they
+are passively tracked with an appropriate name. Because the promise is being returned,
+we do not call `done()` -- someone else will be consuming our promise, so we can't throw
+any unhandled errors just yet.
 
-    **What does it mean to be passively tracked?**
+    WHAT DOES IT MEAN TO BE PASSIVELY TRACKED?
+    
     Basically, a passively tracked promise is just a promise that has been given the
     specified name but will not be persisted to any registered collectors when `done`
-    is called...*unless* it is part of a larger tree of promises that contains at
+    is called...UNLESS it is part of a larger tree of promises that contains at
     least one actively tracked promise and that tree has completely settled.
     
-    **Why use passive tracking at all?**
+    WHY USE PASSIVE TRACKING AT ALL?
+    
     Sometimes you want to control how your promise will appear in timing data but don't
     actually want it persisted. For example, let's say you're routing all remote HTTP
     calls through a custom data layer. Your data layer could return a promise that is
@@ -90,12 +94,15 @@ unhandled errors just yet.
     to run. But that timing data would not be logged EVERY time a remote call was made,
     just when a call was made as part of a larger, actively tracked promise tree.
 
-Finally, we wrap both promises in a call to `Promise.all`, a static method that returns
-a promise which is only resolved if all child promises resolve. But whether that promise
-resolves or reject, we actively track it as 'loading'. You can tell it's actively tracked
-because we didn't specify `true` for the optional `passive` parameter of `trackAs`. Then
-we call `done()`, which waits until the promise is either resolved or rejected to check
-for unhandled exceptions and also persist the timing data to any registered collectors.
+Finally, we wrap our example promises in a call to `Promise.all`, a static method that
+returns a promise which is only resolved if all child promises resolve. But whether that
+promise resolves or reject, we actively track it as 'loading'. You can tell it's actively
+tracked because we didn't specify `true` for the optional `passive` parameter of
+`trackAs`.
+
+Then we call `done()`, which waits until the promise is either resolved or rejected to
+check for unhandled exceptions and also persist the timing data to any registered
+collectors.
 
 In this case, the timing data might look like the following:
 
@@ -154,14 +161,14 @@ more difficult.
 
 If you look closely, you'll notice that the timing data for 'load messages'
 and 'load app data' both start *before* the parent and end *after*. Why?
-Because that's when they started. We kicked off those calls *and then*
-passed the promises to `Promise.all`.
+Because that's when they actually occurred. We kicked off those calls *and
+then* passed those promises to `Promise.all`.
 
 Some people don't like seeing data like this; they prefer more consistent
 timing data, where parent promises always start on or before their children
 and always end on or after the last child settles. If this is needed for
-your particular situation, not to worry. Simply configure Bloodhound using
-the following command:
+your particular situation, simply configure Bloodhound using the following
+command:
 
 `Promise.config.timing.useSaneTimings();`
 
@@ -220,30 +227,35 @@ asynchronous operations are invoked.
 ### Scheduling Asynchronous Operations
 
 `Promise.config.setScheduler(mySchedulerFunction)`
+
 Use the specified function to invoke an asynchronous operation. By default, Bloodhound
 uses `window.setTimeout` to execute an operation on the next tick of the clock. In
 node environments, you may wish to set the scheduler to `async`. In Angular environments
-you may wish to set the scheduler to `$rootScope.$digest.bind($rootScope)`. If you're
-looking for the fastest possible async execution in modern browsers, you could set the
-scheduler to use a predefined MutationObserver callback.
+you may wish to set the scheduler to `$rootScope.$digest.bind($rootScope)`. Finally, if
+you're looking for the fastest possible async execution in modern browsers, you could set
+the scheduler to use a predefined MutationObserver callback.
 
 ### Timing Configuration
 
 `Promise.config.timing.enable()`
+
 Enables the persistence of timing data to any registered collectors. This is the default
 state of Bloodhound.
 
 `Promise.config.timing.disable()`
+
 Disables the persistence of timing data to registered collectors. You can re-enable
 persistence by calling `Promise.config.timing.enable()`.
 
 `Promise.config.timing.useSaneTimings()`
-Ensures parent promises are persisted as starting on or before their child promises and
+
+Ensures parent promises are shown as starting on or before their child promises and
 ending on or after their last child promise settles.
 
 ### Timing Collectors
 
 `Promise.config.collectors.add(collector) : Function`
+
 Adds the specified collector to the list of registered collectors, and returns a function
 you can invoke to remove the collector again.
 
@@ -268,6 +280,7 @@ timingData instance. Each timing data instance will have the following propertie
     children {Array} an array of child timings
     
 `Promise.config.collectors.remove(collector)`
+
 Removes the specified collector from the list of registered collectors.
 
 ## Full API
@@ -290,33 +303,33 @@ and either resolve or reject the promise:
     
 ### Static Methods
 
-#### all
-#### any
-#### some
-#### race
-#### settle
+#### Promise.all
+#### Promise.any
+#### Promise.some
+#### Promise.race
+#### Promise.settle
 
-#### call
-#### apply
+#### Promise.call
+#### Promise.apply
 
-#### cast
-#### defer
-#### delay
+#### Promise.cast
+#### Promise.defer
+#### Promise.delay
 
-#### isPromise
+#### Promise.isPromise
 
 ### Instance Methods
 
-#### then
-#### tap
-#### catch
-#### notified
-#### finally
-#### done
+#### promise.then
+#### promise.tap
+#### promise.catch
+#### promise.notified
+#### promise.finally
+#### promise.done
 
-#### spread
-#### trackAs
+#### promise.spread
+#### promise.trackAs
 
-#### isRejected
-#### isResolved
-#### isSettled
+#### promise.isRejected
+#### promise.isResolved
+#### promise.isSettled
