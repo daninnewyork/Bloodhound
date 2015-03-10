@@ -92,7 +92,9 @@
 
                 addChildren : function addChildren(timing, children) {
                     (children || []).forEach(function iter(child) {
-                        timing.children.push(Timing.getTimingTree(child));
+                        if (child.isSettled()) {
+                            timing.children.push(Timing.getTimingTree(child));
+                        }
                     });
                 },
 
