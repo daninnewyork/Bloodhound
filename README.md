@@ -416,6 +416,8 @@ rules:
  - Otherwise, the returned promise will be immediately resolved with the
    given value.
 
+Sample code:
+
     Promise.cast(new Date()).then(function(now) {
         log(now); // outputs the current date and time
     }).done();
@@ -428,9 +430,26 @@ rules:
         log(value); // 123
     }).done();
 
+#### Promise.hash
+
+Returns a promise that will be resolved with an object. The object's keys will
+match the keys of the object passed in, and the object's values will represent
+the resolved values of the incoming object's promises, or the reasons it was
+rejected.
+
+    Promise.hash({
+        'key1': 'you can use normal values',
+        'key2': Promise.delay(30, 'and resolved values'),
+        'key3': Promise.reject('even rejections')
+    }).then(function(results) {
+        log(results.key1); // 'you can use normal values'
+        log(results.key2); // 'and resolved values'
+        log(results.key3); // 'even rejections'
+    }).done();
+
 #### Promise.defer
 
-*DEPRECATED* This method is only provided for compatibility with any existing
+*DEPRECATED!* This method is only provided for compatibility with any existing
 legacy promise code you may be using. You are encouraged instead to use the
 Promise constructor to return a promise.
 
@@ -511,6 +530,8 @@ object; otherwise, returns `false`.
 #### promise.notified
 #### promise.finally
 #### promise.done
+
+#### promise.timeout
 
 #### promise.spread
 #### promise.trackAs
