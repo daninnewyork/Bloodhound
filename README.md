@@ -507,7 +507,7 @@ The preferred approach is to use the Promise constructor:
     // how you use the result is the same:
     doAsyncOperation().then(...).done();
 
-#### Promise.delay(Number*[, \*]*) : Promise
+#### Promise.delay(Number*[, *]*) : Promise
 
 Returns a promise that will be resolved with the specified value
 after the given number of milliseconds. If you provide an instance
