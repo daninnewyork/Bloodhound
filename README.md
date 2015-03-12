@@ -325,7 +325,7 @@ and either resolve or reject the promise:
     
 ### Static Methods
 
-#### Promise.all
+#### Promise.all(Array) : Promise
 
 Resolves if all child promises resolve; rejects if any child promise rejects.
 
@@ -336,7 +336,7 @@ Resolves if all child promises resolve; rejects if any child promise rejects.
         log(reason); // 'world'
     }).done();
 
-#### Promise.any
+#### Promise.any(Array) : Promise
 
 Resolves if any child promise resolves; rejects if all child promises reject.
 
@@ -347,7 +347,7 @@ Resolves if any child promise resolves; rejects if all child promises reject.
         log(value); // 'hello'
     }).done();
 
-#### Promise.some
+#### Promise.some(Array) : Promise
 
 Resolves if the specified number of child promises resolve; rejects if enough
 promises reject that the specified count can't be reached.
@@ -360,7 +360,7 @@ promises reject that the specified count can't be reached.
         log(values); // ['hello', 'world']
     }).done();
 
-#### Promise.race
+#### Promise.race(Array) : Promise
 
 Resolves with the value of the first child to resolve. If no children
 resolve, the promise will be rejected.
@@ -373,7 +373,7 @@ resolve, the promise will be rejected.
         log(value); // 'world'
     }).done();
 
-#### Promise.settle
+#### Promise.settle(Array) : Promise
 
 Resolves with an array of all child promises once they have been resolved
 or rejected. The resolved array will contain the values of any resolved
@@ -387,7 +387,7 @@ child promises and the reasons for any rejected child promises.
         log(results); // ['hello', 'world', Error]
     }).done();
 
-#### Promise.call
+#### Promise.call(Function*[, arg1, arg2...]*) : Promise
 
 Invokes the specified function with any optionally supplied arguments
 passed in as parameters, and returns a promise. The promise will be
@@ -403,7 +403,7 @@ an exception, the promise will be rejected with the exception data.
             log(result); // 30
         }).done();
 
-#### Promise.apply
+#### Promise.apply(Function*[, Array]*) : Promise
 
 Similar to `Promise.call`, but allows you to specify an optional array
 of arguments.
@@ -420,7 +420,7 @@ of arguments.
             log(result); // 100
         }).done();
 
-#### Promise.cast
+#### Promise.cast(\*) : Promise
 
 Converts the specified value into a Bloodhound promise using the following
 rules:
@@ -447,7 +447,7 @@ Sample code:
         log(value); // 123
     }).done();
 
-#### Promise.hash
+#### Promise.hash(Object) : Promise
 
 Returns a promise that will be resolved with an object. The object's keys will
 match the keys of the object passed in, and the object's values will represent
@@ -464,7 +464,7 @@ rejected.
         log(results.key3); // 'even rejections'
     }).done();
 
-#### Promise.defer
+#### Promise.defer() : Object
 
 *DEPRECATED!* This method is only provided for compatibility with any existing
 legacy promise code you may be using. You are encouraged instead to use the
@@ -507,7 +507,7 @@ The preferred approach is to use the Promise constructor:
     // how you use the result is the same:
     doAsyncOperation().then(...).done();
 
-#### Promise.delay
+#### Promise.delay(Number*[, \*]*) : Promise
 
 Returns a promise that will be resolved with the specified value
 after the given number of milliseconds. If you provide an instance
@@ -530,7 +530,7 @@ failure.
         log(err); // Error
     }).done();
 
-#### Promise.isPromise
+#### Promise.isPromise(\*) : Boolean
 
 Returns `true` if the value is a Bloodhound promise or "thenable"
 object; otherwise, returns `false`.
@@ -541,7 +541,7 @@ object; otherwise, returns `false`.
 
 ### Instance Methods
 
-#### promise.then
+#### promise.then(*[Function, Function, Function]*) : Promise
 
 Registers optional callbacks for success, failure, and notification,
 and returns a new promise. If your success or failure callback returns
@@ -564,7 +564,7 @@ promise will be resolved or rejected with the returned promise.
             log(reason); // 'some reason'
         }).done();
 
-#### promise.tap
+#### promise.tap(*[Function]*) : Promise
 
 Registers a callback that will be invoked when the promise resolves.
 The callback will be provided with the resolved value, but anything
@@ -586,7 +586,7 @@ an error, it will be ignored.
             log(value); // still 'hello world'
         }).done();
 
-#### promise.catch
+#### promise.catch(*[Function]*) : Promise
 
 Registers a callback that will be invoked only if the promise is
 rejected, and returns a new promise that will be resolved or rejected
@@ -627,7 +627,7 @@ The ability to swallow exceptions is just one reason why calling
 that any *un-*handled exceptions are rethrown so your application
 won't end up in an inconsistent state.
 
-#### promise.notified
+#### promise.notified(*[Function]*) : Promise
 
 You can schedule a notification callback to be invoked whenever an
 update is announced. Long-running operations can take advantage of
@@ -654,7 +654,7 @@ The static methods `hash` and `settle` will call any registered
 notification handlers automatically with the percent of promises
 that have been settled at any point in time.
 
-#### promise.finally
+#### promise.finally(*[Function]*) : Promise
 
 Allows you to register a callback that will be invoked when the
 promise is settled, regardless of whether it was resolved or
@@ -670,7 +670,7 @@ rejected.
             log(value); // Error
         }).done();
 
-#### promise.done
+#### promise.done() : Promise
 
 This is a very important method. The golden rule of promises is:
 
@@ -719,7 +719,7 @@ constructing the promise tree and that it is safe to persist.
     // look for unhandled exceptions and to persist
     // the timing data to collectors
 
-#### promise.timeout
+#### promise.timeout(Number*[, String]*) : Promise
 
 If the promise is not settled in the amount of time specified,
 automatically reject it. You can provide a custom rejection
@@ -729,9 +729,39 @@ string, or use the default of 'timed out'.
     Promise.delay(50).timeout(100); // does not time out
     Promise.delay(50).timeout(20, 'too slow'); // rejects with 'too slow'
 
-#### promise.spread
-#### promise.trackAs
+The original promise is returned from this method, so you can
+continue chaining handlers:
 
-#### promise.isRejected
-#### promise.isResolved
-#### promise.isSettled
+    Promise.delay(50)
+        .timeout(Math.random() * 100)
+        .then(success, failure);
+
+#### promise.spread(*[Function]*) : Promise
+
+If the promise is resolved with an array, this method will invoke
+the specified callback with each array value passed in as arguments.
+
+    Promise.all([
+        Promise.delay(40, 'a'),
+        Promise.delay(10, 'b'),
+        Promise.delay(20, 'c')
+    ]).spread(function(a, b, c) {
+        log(a, b, c); // 'a', 'b', 'c'
+    }).done();
+
+This can be a useful alternative to nesting promises. Without `all`,
+you would've had to write code like this:
+
+    Promise.delay(40, 'a').then(function(a) {
+        Promise.delay(10, 'b').then(function(b) {
+            Promise.delay(20, 'c').then(function(c) {
+                log(a, b, c); // 'a', 'b', 'c'
+            }).done();
+        }).done();
+    }).done();
+
+#### promise.trackAs(String*[, Boolean]*) : Promise
+
+#### promise.isRejected() : Boolean
+#### promise.isResolved() : Boolean
+#### promise.isSettled() : Boolean
