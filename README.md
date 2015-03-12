@@ -259,10 +259,32 @@ ending on or after their last child promise settles.
 
 ### Timing Collectors
 
-`Promise.config.collectors.remove(collector)`
+Collectors are objects with a single method called `collect` that accepts a timing data
+object and decides what to do with it. For example, a collector for Google Analytics
+may look like this:
 
-Removes the specified collector from the list of registered collectors.
+    var GACollector = {
+        collect: function(timingData) {
+            ga('send', 'timing', 'myApp', timingData.name, timingData.duration);
+        }
+    };
 
+We could modify our GACollector to send a timing event for all our child timings, too,
+instead of just the root timing. Some collectors may also want us to persist start and
+stop times. All of this information is available through the timingData object, which
+has the following properties:
+
+    name {String} the tracked name of the promise, or 'anonymouse'
+    data {*} either the resolved value or rejection reason
+    start {Number} when the promise was created, as the number of milliseconds since
+        midnight, January 1, 1970 UTC
+    stop {Number} when the promise was finally settled, as the number of milliseconds
+        since midnight, January 1, 1970 UTC
+    duration {Number} the difference between start and stop
+    children {Array} an array of child timings
+
+To register or de-register collectors, use the following methods:
+    
 `Promise.config.collectors.add(collector) : Function`
 
 Adds the specified collector to the list of registered collectors, and returns a function
@@ -276,18 +298,13 @@ you can invoke to remove the collector again.
     
     var remove = Promise.config.collectors.add(collector);
 
-A collector is simply an object with a method called `collect` that will accept a single
-timingData instance. Each timing data instance will have the following properties:
+The above collector simply logs the timingData instance to the browser's console.
 
-    name {String} the tracked name of the promise, or 'anonymouse'
-    data {*} either the resolved value or rejection reason
-    start {Number} when the promise was created, as the number of milliseconds since
-        midnight, January 1, 1970 UTC
-    stop {Number} when the promise was finally settled, as the number of milliseconds
-        since midnight, January 1, 1970 UTC
-    duration {Number} the difference between start and stop
-    children {Array} an array of child timings
-    
+`Promise.config.collectors.remove(collector)`
+
+Removes the specified collector from the list of registered collectors. This has the
+same effect as invoking the function returned by `Promise.config.collectors.add`.
+
 ## Full API
 
 ### Promise constructor
@@ -525,13 +542,192 @@ object; otherwise, returns `false`.
 ### Instance Methods
 
 #### promise.then
+
+Registers optional callbacks for success, failure, and notification,
+and returns a new promise. If your success or failure callback returns
+a value, it will become the new value of the returned promise. If
+either callback throws an exception the returned promise will be rejected
+with the error. If either callback returns a promise, the original
+promise will be resolved or rejected with the returned promise.
+
+    Promise.delay(10, 'a')
+        .then(function(value) {
+            log(value); // 'a'
+            return 'b';
+        }).then(function(value) {
+            log(value); // 'b'
+            return Promise.delay(30, 'c');
+        }).then(function(value) {
+            log(value); // 'c'
+            return Promise.reject('some reason');
+        }).catch(function(reason) {
+            log(reason); // 'some reason'
+        }).done();
+
 #### promise.tap
+
+Registers a callback that will be invoked when the promise resolves.
+The callback will be provided with the resolved value, but anything
+you return from the callback will be ignored. If your callback throws
+an error, it will be ignored.
+
+    Promise.delay(50, 'hello')
+        .tap(function(value) {
+            log(value); // 'hello'
+            return 'world'; // ignored
+        }).then(function(value) {
+            log(value); // still 'hello'
+            return value + ' world'; // not ignored
+        }).then(function(value) {
+            log(value); // 'hello world'
+        }).tap(function(value) {
+            throw new Error('this is ignored');
+        }).then(function(value) {
+            log(value); // still 'hello world'
+        }).done();
+
 #### promise.catch
+
+Registers a callback that will be invoked only if the promise is
+rejected, and returns a new promise that will be resolved or rejected
+based on the callback's behavior.
+
+If the callback does not return anything, the returned promise will
+be resolved. If the callback returns a value, the returned promise
+will be resolved with that value. If the callback throws an exception
+or returns a rejected promise, the child promise will be rejected.
+
+    Promise.delay(50, new Error())
+        .catch(function(err) {
+            // by handling the error, the original
+            // promise will switch from rejected
+            // to resolve UNLESS we re-throw the
+            // error or return a rejected promise
+            throw err;
+            // or: return Promise.reject(err);
+        }).done();
+
+    Promise.delay(40, new Error())
+        .catch(function(err) {
+            // let's handle the error; if we
+            // do not return anything, then we
+            // effectively "swallowed" the
+            // rejection and converted this
+            // to a resolved promise; if we
+            // explicitly return a value, it
+            // will become the new resolved
+            // value for any chained handlers:
+            return 'new value';
+        }).then(function(value) {
+            log(value); // 'new value'
+        }).done();
+
+The ability to swallow exceptions is just one reason why calling
+`done()` is so important at the end of a promise chain. It ensures
+that any *un-*handled exceptions are rethrown so your application
+won't end up in an inconsistent state.
+
 #### promise.notified
+
+You can schedule a notification callback to be invoked whenever an
+update is announced. Long-running operations can take advantage of
+notification callbacks to present status data to the user (e.g. in
+the form of a progress bar).
+
+    new Promise(function(resolve, reject, update) {
+        $('#myBar).css({width: 0}).show();
+        // do long-running operation #1
+        update(20); // 20% done
+        // do long-running operation #2
+        update(45);
+        // do long-running operation #3
+        update(70);
+        // do long-running operation #4
+        update(100);
+    }).notified(function(percent) {
+        $('#myBar').css({width: percent});
+    }).finally(function() {
+        $('#myBar').hide();
+    });
+
+The static methods `hash` and `settle` will call any registered
+notification handlers automatically with the percent of promises
+that have been settled at any point in time.
+
 #### promise.finally
+
+Allows you to register a callback that will be invoked when the
+promise is settled, regardless of whether it was resolved or
+rejected.
+
+    Promise.delay(50, 'resolved')
+        .finally(function(value) {
+            log(value); // resolved
+        }).done();
+
+    Promise.delay(50, new Error())
+        .finally(function(value) {
+            log(value); // Error
+        }).done();
+
 #### promise.done
 
+This is a very important method. The golden rule of promises is:
+
+    If you do not return the promise, you must call done.
+
+Calling `done()` is what throws any unhandled rejections up to
+the browser, ensuring any errors in your application can be found
+and handled correctly. Look at the following example:
+
+    Promise.resolve(new Date()).then(myHandler);
+
+    // because we don't call done here, what would
+    // happen if an exception occurred in the myHandler
+    // method? we would never know the error occurred
+    // because it would have been converted into a
+    // rejected promise!
+
+    Promise.resolve(new Date()).then(myHandler).done();
+    
+    // now any unhandled rejections will be propagated
+    // up to the UI so we know a problem occurred
+
+Calling `done()` also persists timing data to your collectors.
+Because promises can be chained together into complex trees,
+there is no other way for Bloodhound to know that you are done
+constructing the promise tree and that it is safe to persist.
+
+    function myLongRunningOperation() {
+        // because we are returning the promise,
+        // we DO NOT call done(); this ensures
+        // callers can incorporate this promise
+        // into their trees -- we have to rely
+        // on them calling done() at the correct
+        // time and place
+        return Promise.delay(2000, 'sample data');
+    }
+    
+    Promise.all([
+        myLongRunningOperation(),
+        someOtherLongRunningOperation(),
+        anotherLongRunningOperation(),
+        ...
+    ]).trackAs('lots of operations').done();
+    
+    // we call done() when it's finally safe to
+    // look for unhandled exceptions and to persist
+    // the timing data to collectors
+
 #### promise.timeout
+
+If the promise is not settled in the amount of time specified,
+automatically reject it. You can provide a custom rejection
+string, or use the default of 'timed out'.
+
+    Promise.delay(50).timeout(20); // rejects after 20ms with 'timed out'
+    Promise.delay(50).timeout(100); // does not time out
+    Promise.delay(50).timeout(20, 'too slow'); // rejects with 'too slow'
 
 #### promise.spread
 #### promise.trackAs

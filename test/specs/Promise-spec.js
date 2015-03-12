@@ -282,6 +282,15 @@ define(['Promise'], function(Promise) {
                 });
             });
 
+            it('throwing an exception in the callback does not affect next promise', function(done) {
+                Promise.resolve('abc').tap(function() {
+                    throw new Error();
+                }).then(function(value) {
+                    expect(value).toBe('abc');
+                    done();
+                });
+            });
+
         });
 
         describe('finally', function() {
@@ -687,6 +696,19 @@ define(['Promise'], function(Promise) {
                     expect(promises).toEqual([]);
                     done();
                 });
+            });
+
+            it('updates with percentage compled', function(done) {
+                var index = 0,
+                    percents = [25, 50, 75, 100];
+                Promise.settle([
+                    Promise.delay(10),
+                    Promise.delay(20),
+                    Promise.delay(25),
+                    Promise.delay(35)
+                ]).notified(function(percent) {
+                    expect(percent).toBe(percents[index++]);
+                }).finally(done);
             });
 
         });

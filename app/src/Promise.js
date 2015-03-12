@@ -493,7 +493,11 @@
         Promise.prototype.tap = function onTap(callback) {
             return this.then(function tapValue(value) {
                 if (typeof callback === 'function') {
-                    callback(value);
+                    try {
+                        callback(value);
+                    } catch (err) {
+                        // swallow
+                    }
                 }
             });
         };
@@ -987,13 +991,13 @@
                     return Promise.cast(obj[key]);
                 });
             return getArrayPromise(promises, function HashPromise(resolve, reject) {
-                Promise.settle(promises).then(function(results) {
+                Promise.settle(promises).then(function mapResults(results) {
                     var result = {};
                     keys.forEach(function iter(key, index) {
                         result[key] = results[index]._data;
                     });
                     resolve(result);
-                }, reject);
+                }, reject).done();
             });
         };
 
@@ -1002,6 +1006,10 @@
          * specified promises are either resolved or rejected.
          * The returned promise is resolved with the original
          * array of promises, so they can be further inspected.
+         *
+         * If you have registered a notification callback on
+         * the returned promise, it will be invoked with the
+         * percentage of promises that have been settled.
          * @function Bloodhound.Promise.settle
          * @param promises {Bloodhound.Promise[]}
          * @returns {Bloodhound.Promise}
@@ -1009,17 +1017,20 @@
          * Promise.settle([
          *   Promise.delay(25, new Date()),
          *   Promise.delay(15, new Error())
-         * ]).then(function(promises) {
+         * ]).notified(function(percent) {
+         *   log(percent); // 50 then 100
+         * }).then(function(promises) {
          *   log(promises[0].isResolved()); // true
          *   log(promises[1].isResolved()); // false
          * }).done();
          */
         Promise.settle = function settle(promises) {
-            return getArrayPromise(promises, function SettlePromise(resolve) {
+            return getArrayPromise(promises, function SettlePromise(resolve, reject, update) {
                 var numSettled = 0,
                     total = promises.length,
                     increment = function increment() {
-                        if (++numSettled >= total) {
+                        update(Math.ceil(++numSettled / total * 100));
+                        if (numSettled >= total) {
                             resolve(promises);
                         }
                     };
