@@ -493,9 +493,39 @@
         Promise.prototype.tap = function onTap(callback) {
             return this.then(function tapValue(value) {
                 if (typeof callback === 'function') {
-                    callback(value);
+                    try {
+                        callback(value);
+                    } catch (err) {
+                        // swallow
+                    }
                 }
             });
+        };
+
+        /**
+         * Rejects the promise if it has not been resolved
+         * by the time the specified number of milliseconds
+         * have passed.
+         * @function Bloodhound.Promise#timeout
+         * @param ms {Number} The number of milliseconds to wait
+         *  before rejecting the promise.
+         * @param [reason='timed out'] {String} An optional
+         *  rejection reason you can specify; if not provided,
+         *  'timed out' will be used.
+         * @returns {Promise} The same promise that `timeout`
+         *  was called on.
+         * @example
+         * Promise.delay(100, 'never resolved')
+         *   .timeout(50, 'took too long')
+         *   .catch(function(reason) {
+         *     log(reason); // 'took too long'
+         *   }).done();
+         */
+        Promise.prototype.timeout = function timeout(ms, reason) {
+            var reject = this._reject.bind(this, reason || 'timed out'),
+                token = global.setTimeout(reject, ms);
+            this.finally(global.clearTimeout.bind(global, token));
+            return this;
         };
 
         /**
@@ -904,22 +934,82 @@
         /** array methods **/
 
         function getArrayPromise(promises, resolver) {
-
-            if (!(promises instanceof Array) || !promises.every(Promise.isPromise)) {
-                throw new TypeError('This method expects an array of promises.');
+            if (!(promises instanceof Array)) {
+                throw new TypeError('This method expects an array.');
             }
-
+            promises.forEach(function cast(promise, index) {
+                promises[index] = Promise.cast(promise);
+            });
             var parent = new Promise(resolver);
             promises.forEach(chain.bind(null, parent));
             return parent;
-
         }
+
+        /**
+         * Returns a promise that will be resolved with an object
+         * whose keys match the incoming object's keys, and whose
+         * values are the incoming object's values when resolved
+         * or reasons when rejected. See the example for details.
+         * @function Bloodhound.Promise.hash
+         * @param obj {Object} An object whose keys will be used
+         *  for the keys of the resolved promise value, and whose
+         *  values, if promises, will be resolved.
+         * @returns {Bloodhound.Promise}
+         * @example
+         * function getUserData() {
+         *   return new Promise(function(resolve) {
+         *     // make remote call, then resolve
+         *     // with the user's data:
+         *     resolve({
+         *       userName: 'user123',
+         *       lastLogin: '2015-03-02'
+         *     });
+         *   });
+         * }
+         *
+         * function getUserPermissions() {
+         *   return ['edit', 'delete', 'create'];
+         * }
+         *
+         * function getAvailableApps() {
+         *   return new Error('invalid operation');
+         * }
+         *
+         * Promise.hash({
+         *   'userData' : getUserData(), // returns a promise
+         *   'permissions' : getUserPermissions(), // returns an array
+         *   'apps' : getAvailableApps() // throws an error
+         * }).then(function(result) {
+         *   log(result.permissions); // ['edit', 'delete', 'create']
+         *   log(result.userData); // {userName: 'user123', lastLogin: '2015-03-02'}
+         *   log(result.apps); // [Error]
+         * }).done();
+         */
+        Promise.hash = function hash(obj) {
+            var keys = Object.getOwnPropertyNames(obj),
+                promises = keys.map(function cast(key) {
+                    return Promise.cast(obj[key]);
+                });
+            return getArrayPromise(promises, function HashPromise(resolve, reject) {
+                Promise.settle(promises).then(function mapResults(results) {
+                    var result = {};
+                    keys.forEach(function iter(key, index) {
+                        result[key] = results[index]._data;
+                    });
+                    resolve(result);
+                }, reject).done();
+            });
+        };
 
         /**
          * Returns a promise that is resolved when all of the
          * specified promises are either resolved or rejected.
          * The returned promise is resolved with the original
          * array of promises, so they can be further inspected.
+         *
+         * If you have registered a notification callback on
+         * the returned promise, it will be invoked with the
+         * percentage of promises that have been settled.
          * @function Bloodhound.Promise.settle
          * @param promises {Bloodhound.Promise[]}
          * @returns {Bloodhound.Promise}
@@ -927,17 +1017,20 @@
          * Promise.settle([
          *   Promise.delay(25, new Date()),
          *   Promise.delay(15, new Error())
-         * ]).then(function(promises) {
+         * ]).notified(function(percent) {
+         *   log(percent); // 50 then 100
+         * }).then(function(promises) {
          *   log(promises[0].isResolved()); // true
          *   log(promises[1].isResolved()); // false
          * }).done();
          */
         Promise.settle = function settle(promises) {
-            return getArrayPromise(promises, function SettlePromise(resolve) {
+            return getArrayPromise(promises, function SettlePromise(resolve, reject, update) {
                 var numSettled = 0,
                     total = promises.length,
                     increment = function increment() {
-                        if (++numSettled >= total) {
+                        update(Math.ceil(++numSettled / total * 100));
+                        if (numSettled >= total) {
                             resolve(promises);
                         }
                     };

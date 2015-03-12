@@ -282,6 +282,15 @@ define(['Promise'], function(Promise) {
                 });
             });
 
+            it('throwing an exception in the callback does not affect next promise', function(done) {
+                Promise.resolve('abc').tap(function() {
+                    throw new Error();
+                }).then(function(value) {
+                    expect(value).toBe('abc');
+                    done();
+                });
+            });
+
         });
 
         describe('finally', function() {
@@ -560,6 +569,39 @@ define(['Promise'], function(Promise) {
 
         });
 
+        describe('timeout', function() {
+
+            it('rejects after specified ms', function(done) {
+                Promise.delay(50).timeout(30).catch(function(reason) {
+                    expect(reason).toBe('timed out');
+                    done();
+                });
+            });
+
+            it('does not reject if resolved before timeout', function(done) {
+                Promise.delay(20).timeout(40).then(done);
+            });
+
+            it('rejects with optional reason when provided', function(done) {
+                Promise.delay(50).timeout(30, 'too long').catch(function(reason) {
+                    expect(reason).toBe('too long');
+                    done();
+                });
+            });
+
+            it('earliest of multiple timeouts rejects first', function(done) {
+                Promise.delay(100)
+                    .timeout(20, '20')
+                    .timeout(30, '30')
+                    .timeout(10, '10')
+                    .catch(function(msg) {
+                        expect(msg).toBe('10');
+                        done();
+                    });
+            });
+
+        });
+
         describe('call', function() {
 
             it('returns a promise', function() {
@@ -610,18 +652,42 @@ define(['Promise'], function(Promise) {
 
         });
 
+        describe('hash', function() {
+
+            it('resolves with correct results', function(done) {
+                var input = {
+                    a: Promise.delay(40, 'world'),
+                    b: Promise.delay(10, 'hello'),
+                    c: 123456,
+                    d: new Error()
+                };
+                Promise.hash(input).then(function(results) {
+                    expect(results.a).toBe('world');
+                    expect(results.b).toBe('hello');
+                    expect(results.c).toBe(123456);
+                    expect(results.d instanceof Error).toBe(true);
+                    done();
+                });
+            });
+
+        });
+
         describe('settle', function() {
 
             it('resolves with resolved and rejected promises', function(done) {
                 Promise.settle([
                     Promise.delay(50),
                     Promise.delay(50, new Error()),
-                    Promise.reject()
+                    Promise.reject(),
+                    'abc'
                 ]).then(function(promises) {
                     expect(promises[0].isResolved()).toBe(true);
                     expect(promises[1].isRejected()).toBe(true);
                     expect(promises[2].isRejected()).toBe(true);
+                    expect(promises[3].isResolved()).toBe(true);
                     done();
+                }).catch(function(reason) {
+                    console.log(reason);
                 });
             });
 
@@ -630,6 +696,19 @@ define(['Promise'], function(Promise) {
                     expect(promises).toEqual([]);
                     done();
                 });
+            });
+
+            it('updates with percentage compled', function(done) {
+                var index = 0,
+                    percents = [25, 50, 75, 100];
+                Promise.settle([
+                    Promise.delay(10),
+                    Promise.delay(20),
+                    Promise.delay(25),
+                    Promise.delay(35)
+                ]).notified(function(percent) {
+                    expect(percent).toBe(percents[index++]);
+                }).finally(done);
             });
 
         });
@@ -708,9 +787,10 @@ define(['Promise'], function(Promise) {
                     Promise.delay(40, new Error()),
                     Promise.delay(100, 'def'),
                     Promise.delay(60, 'ghi'),
+                    123456,
                     Promise.reject()
                 ], 2).then(function(values) {
-                    expect(values).toEqual(['abc', 'ghi']);
+                    expect(values).toEqual(['abc', 123456]);
                     done();
                 });
             });
@@ -780,12 +860,14 @@ define(['Promise'], function(Promise) {
             it('passes resolved array as parameters', function(done) {
                 Promise.all([
                     Promise.resolve('abc'),
+                    123456,
                     Promise.delay(40, 'def'),
                     Promise.delay(10, 'ghi')
-                ]).spread(function(val1, val2, val3) {
+                ]).spread(function(val1, val2, val3, val4) {
                     expect(val1).toBe('abc');
-                    expect(val2).toBe('def');
-                    expect(val3).toBe('ghi');
+                    expect(val2).toBe(123456);
+                    expect(val3).toBe('def');
+                    expect(val4).toBe('ghi');
                     done();
                 });
             });
