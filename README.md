@@ -762,6 +762,79 @@ you would've had to write code like this:
 
 #### promise.trackAs(String*[, Boolean]*) : Promise
 
+Registers a tracking name with the promise. If the promise timing
+data is persisted to collectors, it will include the specified name.
+
+The second, optional parameter, determines if the promise should be
+passively tracked. Passively tracked promises will *not* be persisted
+to collectors unless they are part of a larger promise tree that
+contains at least one actively tracked promise.
+
+Actively tracked promises are only persisted if `done()` is called.
+
+    Promise.all([
+        Promise.delay(100, 'a').trackAs('child-1'),
+        Promise.delay(200, 'b').trackAs('child-2'),
+        Promise.delay(150, 'c').trackAs('child-3')
+    ]).trackAs('parent').done();
+
+The above tree might produce timing data like this:
+
+    {
+      "name": "parent",
+      "data": [
+        'a',
+        'b',
+        'c'
+      ],
+      "start": 1425943275661,
+      "stop": 1425943275786,
+      "duration": 225,
+      "children": [
+        {
+          "name": "child-1",
+          "data": 'a',
+          "start": 1425943275661,
+          "stop": 1425943275766,
+          "duration": 105,
+          "children": []
+        },
+        {
+          "name": "child-2",
+          "data": 'b',
+          "start": 1425943275661,
+          "stop": 1425943275871,
+          "duration": 210,
+          "children": []
+        },
+        {
+          "name": "child-3",
+          "data": 'c',
+          "start": 1425943275661,
+          "stop": 1425943275816,
+          "duration": 155,
+          "children": []
+        }
+      ]
+    }
+
 #### promise.isRejected() : Boolean
+
+Returns `true` if the promise has been rejected. If the promise
+is resolved or has not yet been settled, it will return `false`.
+
+    Promise.reject('reason').isRejected(); // true
+    
+    // but this returns false, because the promise has not
+    // yet been rejected:
+    Promise.delay(50, new Error()).isRejected();
+
 #### promise.isResolved() : Boolean
+
+Returns `true` if the promise has been resolved. If the promise
+is rejected or not yet settled, returns `false`.
+
 #### promise.isSettled() : Boolean
+
+Returns `true` if the promise has either been resolved or
+rejected. If the promise is still pending, returns `false`.
