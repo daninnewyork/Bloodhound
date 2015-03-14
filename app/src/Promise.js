@@ -1,4 +1,4 @@
-(function(global, undefined) {
+(function(global, define, undefined) {
 
     'use strict';
 
@@ -1344,12 +1344,15 @@
 
         };
 
-        // TODO: use global.MutationObserver as scheduler if available
-
         Promise.config.setScheduler(global.setTimeout);
 
         return Promise;
 
     });
 
-}(window));
+}(  window,
+    typeof define === 'function' && define.amd ? define :
+    function(factory) {
+        'use strict';
+        module.exports = factory(require);
+    }));

@@ -47,7 +47,7 @@ Basically, the golden rule of promises is:
 
 Calling `done` is what tells Bloodhound that it should attempt to gather up any timing data
 in the tree and persist it to any registered collectors. It also throws any unhandled
-rejections / exceptions so you know there's an error in your application. (Otherwise, your
+rejections / exceptions so you know if there is an error in your application. (Otherwise, your
 app could end up in an inconsistent state.)
 
 Let's look at an example that combines the two new methods:
@@ -231,14 +231,31 @@ asynchronous operations are invoked.
 Use the specified function to invoke an asynchronous operation. By default, Bloodhound
 uses `window.setTimeout` to execute an operation on the next tick of the clock.
 
-In node environments, you may wish to set the scheduler to `async`.
+In node environments, you may wish to use `process.nextTick`.
 
-In Angular environments, you may wish to use `$rootScope.$digest.bind($rootScope)`.
+In Angular environments, you may wish to use `$rootScope.$digest.bind($rootScope)` to
+ensure promise resolution occurs within the digest cycle.
 
 Finally, if you're looking for the fastest possible async execution in modern browsers,
-you could set the scheduler to use a predefined MutationObserver callback:
+you could set the scheduler to use the MutationObserver:
 
-**TODO:** MutationObserver example code
+    var i = 0,
+        scheduled,
+        node = document.createTextNode(''),
+		o = new MutationObserver(run);
+
+    o.observe(node, { characterData: true });
+
+    function run() {
+        var fn = scheduled;
+        scheduled = void 0;
+        fn();
+    }
+
+    Promise.config.setScheduler(function scheduler(fn) {
+        scheduled = fn;
+        node.data = (i ^= 1);
+    });
 
 ### Timing Configuration
 
@@ -347,62 +364,6 @@ Resolves if any child promise resolves; rejects if all child promises reject.
         log(value); // 'hello'
     }).done();
 
-#### Promise.some(Array) : Promise
-
-Resolves if the specified number of child promises resolve; rejects if enough
-promises reject that the specified count can't be reached.
-
-    Promise.some([
-        Promise.delay(50, 'hello'),
-        Promise.delay(100, 'world'),
-        Promise.reject('reason')
-    ], 2).then(function(values) {
-        log(values); // ['hello', 'world']
-    }).done();
-
-#### Promise.race(Array) : Promise
-
-Resolves with the value of the first child to resolve. If no children
-resolve, the promise will be rejected.
-
-    Promise.race([
-        Promise.delay(50, 'hello'),
-        Promise.delay(20, 'world'),
-        Promise.reject('reason')
-    ]).then(function(value) {
-        log(value); // 'world'
-    }).done();
-
-#### Promise.settle(Array) : Promise
-
-Resolves with an array of all child promises once they have been resolved
-or rejected. The resolved array will contain the values of any resolved
-child promises and the reasons for any rejected child promises.
-
-    Promise.settle([
-        Promise.delay(50, 'hello'),
-        Promise.delay(20, 'world'),
-        Promise.reject(new Error('reason'))
-    ]).then(function(results) {
-        log(results); // ['hello', 'world', Error]
-    }).done();
-
-#### Promise.call(Function*[, arg1, arg2...]*) : Promise
-
-Invokes the specified function with any optionally supplied arguments
-passed in as parameters, and returns a promise. The promise will be
-resolved with the return value of the function. If the function throws
-an exception, the promise will be rejected with the exception data.
-
-    function someMethod(a, b) {
-        return a + b;
-    }
-    
-    Promise.call(someMethod, 10, 20)
-        .then(function(result) {
-            log(result); // 30
-        }).done();
-
 #### Promise.apply(Function*[, Array]*) : Promise
 
 Similar to `Promise.call`, but allows you to specify an optional array
@@ -418,6 +379,22 @@ of arguments.
     Promise.apply(someMethod, [10, 20, 30, 40])
         .then(function(result) {
             log(result); // 100
+        }).done();
+
+#### Promise.call(Function*[, arg1, arg2...]*) : Promise
+
+Invokes the specified function with any optionally supplied arguments
+passed in as parameters, and returns a promise. The promise will be
+resolved with the return value of the function. If the function throws
+an exception, the promise will be rejected with the exception data.
+
+    function someMethod(a, b) {
+        return a + b;
+    }
+    
+    Promise.call(someMethod, 10, 20)
+        .then(function(result) {
+            log(result); // 30
         }).done();
 
 #### Promise.cast(\*) : Promise
@@ -445,23 +422,6 @@ Sample code:
     
     Promise.cast($q.when(123)).then(function(value) {
         log(value); // 123
-    }).done();
-
-#### Promise.hash(Object) : Promise
-
-Returns a promise that will be resolved with an object. The object's keys will
-match the keys of the object passed in, and the object's values will represent
-the resolved values of the incoming object's promises, or the reasons it was
-rejected.
-
-    Promise.hash({
-        'key1': 'you can use normal values',
-        'key2': Promise.delay(30, 'and resolved values'),
-        'key3': Promise.reject('even rejections')
-    }).then(function(results) {
-        log(results.key1); // 'you can use normal values'
-        log(results.key2); // 'and resolved values'
-        log(results.key3); // 'even rejections'
     }).done();
 
 #### Promise.defer() : Object
@@ -530,6 +490,23 @@ failure.
         log(err); // Error
     }).done();
 
+#### Promise.hash(Object) : Promise
+
+Returns a promise that will be resolved with an object. The object's keys will
+match the keys of the object passed in, and the object's values will represent
+the resolved values of the incoming object's promises, or the reasons it was
+rejected.
+
+    Promise.hash({
+        'key1': 'you can use normal values',
+        'key2': Promise.delay(30, 'and resolved values'),
+        'key3': Promise.reject('even rejections')
+    }).then(function(results) {
+        log(results.key1); // 'you can use normal values'
+        log(results.key2); // 'and resolved values'
+        log(results.key3); // 'even rejections'
+    }).done();
+
 #### Promise.isPromise(\*) : Boolean
 
 Returns `true` if the value is a Bloodhound promise or "thenable"
@@ -539,9 +516,49 @@ object; otherwise, returns `false`.
     log(Promise.isPromise(Promise.cast())); // true
     log(Promise.isPromise(new Date())); // false
 
+#### Promise.race(Array) : Promise
+
+Resolves with the value of the first child to resolve. If no children
+resolve, the promise will be rejected.
+
+    Promise.race([
+        Promise.delay(50, 'hello'),
+        Promise.delay(20, 'world'),
+        Promise.reject('reason')
+    ]).then(function(value) {
+        log(value); // 'world'
+    }).done();
+
+#### Promise.settle(Array) : Promise
+
+Resolves with an array of all child promises once they have been resolved
+or rejected. The resolved array will contain the values of any resolved
+child promises and the reasons for any rejected child promises.
+
+    Promise.settle([
+        Promise.delay(50, 'hello'),
+        Promise.delay(20, 'world'),
+        Promise.reject(new Error('reason'))
+    ]).then(function(results) {
+        log(results); // ['hello', 'world', Error]
+    }).done();
+
+#### Promise.some(Array, Number) : Promise
+
+Resolves if the specified number of child promises resolve; rejects if enough
+promises reject that the specified count can't be reached.
+
+    Promise.some([
+        Promise.delay(50, 'hello'),
+        Promise.delay(100, 'world'),
+        Promise.reject('reason')
+    ], 2).then(function(values) {
+        log(values); // ['hello', 'world']
+    }).done();
+
 ### Instance Methods
 
-#### promise.then(*[Function, Function, Function]*) : Promise
+#### promise.then(*[Function[, Function[, Function]]]*) : Promise
 
 Registers optional callbacks for success, failure, and notification,
 and returns a new promise. If your success or failure callback returns
@@ -549,6 +566,15 @@ a value, it will become the new value of the returned promise. If
 either callback throws an exception the returned promise will be rejected
 with the error. If either callback returns a promise, the original
 promise will be resolved or rejected with the returned promise.
+
+    Promise.delay(20, (Math.random() * 10) % 2 === 0 ?
+        new Error() : 'hello').then(
+            function success(value) {
+                log(value); // 'hello'
+            },
+            function failure(err) {
+                log(err); // Error
+            }).done();
 
     Promise.delay(10, 'a')
         .then(function(value) {
@@ -626,6 +652,42 @@ The ability to swallow exceptions is just one reason why calling
 `done()` is so important at the end of a promise chain. It ensures
 that any *un-*handled exceptions are rethrown so your application
 won't end up in an inconsistent state.
+
+Finally, there is a subtle but important difference between using
+`catch` and `then` to register failure callbacks. Look at the
+following 2 code samples:
+
+    var doStuff = function(resolve) {
+            // pretend stuff happens here
+            resolve(values);
+        },
+        
+        success = function(results) {
+            // process results
+        },
+        
+        failure = function() {
+            // log failure
+        }
+
+    return new Promise(doStuff).then(success, failure);
+    return new Promise(doStuff).then(success).catch(failure);
+    
+What is the difference in the last 2 lines? In the first line, we
+attached the failure callback to the `doStuff` method -- it will only
+be invoked if that method throws an error or rejects.
+
+But in the second line, we've attached the failure callback to
+*both* `doStuff` and `success` -- now, if an error occurs in either
+of those methods, `failure` will be called. This may be the behavior
+you want. Or you may want to handle errors in `success` with special
+logic:
+
+    return new Promise(doStuff)
+        .then(success, failure)
+        .catch(function() {
+            // success must have failed
+        });
 
 #### promise.notified(*[Function]*) : Promise
 
