@@ -1,5 +1,5 @@
 {
-  "name": "Bloodhound",
+  "name": "bloodhound-promises",
   "version": "1.0.0",
   "description": "Promise implementation with built-in timing data.",
   "main": "app/src/Promise.js",

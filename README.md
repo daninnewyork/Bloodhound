@@ -606,6 +606,7 @@ an error, it will be ignored.
             return value + ' world'; // not ignored
         }).then(function(value) {
             log(value); // 'hello world'
+            return value;
         }).tap(function(value) {
             throw new Error('this is ignored');
         }).then(function(value) {
