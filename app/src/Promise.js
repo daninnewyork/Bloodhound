@@ -1,8 +1,8 @@
-(function(global, define, undefined) {
+(function(define, undefined) {
 
     'use strict';
 
-    define([], function() {
+    define(function() {
 
         var async,
             collectors = [],
@@ -42,36 +42,69 @@
 
             },
 
-            RESOLVER = function RESOLVER(promise, x, parentValue) {
+            RESOLVER = function RESOLVER(promise, x) {
+
                 // NOTE: logic is based on the Promises/A+ spec
                 // found at https://promisesaplus.com/
-                if (!!promise && promise === x) {
+
+                if (promise === x) {
                     promise._reject(new TypeError());
-                } else if (Promise.isPromise(x)) {
+                } else if (x instanceof Promise) {
+
                     if (Cycle.inChain(x, promise)) {
                         throw new Error('Cycle created in promise chain.');
                     }
-                    x.then(promise._resolve, promise._reject);
-                    chain(promise._parent || promise, x);
-                } else if (x === undefined) {
-                    if (parentValue instanceof Error) {
-                        parentValue = undefined;
+
+                    if (x._state === States.PENDING) {
+                        x.then(function (val) {
+                            RESOLVER(promise, val);
+                        }, function (reason) {
+                            promise._reject(reason);
+                        });
+                    } else if (x._state === States.REJECTED) {
+                        promise._reject(x._data);
+                    } else {
+                        RESOLVER(promise, x._data);
                     }
-                    promise._resolve(parentValue);
-                } else if (typeof x === 'function' || typeof x === 'object') {
+
+                    chain(promise._parent || promise, x);
+
+                } else if (!!x && (typeof x === 'object' || typeof x === 'function')) {
+
+                    var then,
+                        called = false;
+
                     try {
-                        var next = x.then;
-                        if (typeof next === 'function') {
-                            next.call(x, RESOLVER.bind(null, promise), promise._reject);
+                        then = x.then;
+                        if (typeof then === 'function') {
+                            then.call(x,
+                                function chainedResolve(y) {
+                                    if (!called) {
+                                        RESOLVER(promise, y);
+                                        called = true;
+                                    }
+                                },
+                                function chainedReject(reason) {
+                                    if (!called) {
+                                        promise._reject(reason);
+                                        called = true;
+                                    }
+                                });
                         } else {
                             promise._resolve(x);
+                            called = true;
                         }
                     } catch (e) {
-                        promise._reject(e);
+                        if (!called) {
+                            promise._reject(e);
+                            called = true;
+                        }
                     }
+
                 } else {
                     promise._resolve(x);
                 }
+
             },
 
             Timing = {
@@ -207,7 +240,7 @@
                             }
                         }
                         try {
-                            RESOLVER(child, callback(value), value);
+                            RESOLVER(child, callback(value));
                         } catch (err) {
                             reject(err);
                         }
@@ -220,13 +253,12 @@
             wrapPush = function wrapPush(promise, arr, state) {
                 // if someone tries to add a callback to
                 // a promise that is already settled, we
-                // immediately schedule the callback for
-                // invocation; otherwise, we add it to the
-                // queue to be invoked once the promise is
-                // resolved or rejected
+                // immediately invoke the callback; otherwise,
+                // we add it to the queue to be invoked once
+                // the promise is settled
                 arr.push = function push(fn) {
                     if (promise._state === state) {
-                        async(fn, promise._data);
+                        fn(promise._data);
                     } else {
                         Array.prototype.push.call(arr, fn);
                     }
@@ -499,6 +531,7 @@
                         // swallow
                     }
                 }
+                return value;
             });
         };
 
@@ -523,8 +556,8 @@
          */
         Promise.prototype.timeout = function timeout(ms, reason) {
             var reject = this._reject.bind(this, reason || 'timed out'),
-                token = global.setTimeout(reject, ms);
-            this.finally(global.clearTimeout.bind(global, token));
+                token = setTimeout(reject, ms);
+            this.finally(clearTimeout.bind(null, token));
             return this;
         };
 
@@ -705,6 +738,7 @@
                 if (typeof callback === 'function') {
                     return callback.apply(null, values);
                 }
+                return values;
             });
         };
 
@@ -728,7 +762,7 @@
         };
 
         /**
-         * Returns a promise that is immediately resolve with
+         * Returns a promise that is immediately resolved with
          * the specified value.
          * @param value {*}
          * @returns {Bloodhound.Promise}
@@ -865,7 +899,7 @@
          */
         Promise.delay = Promise.wait = function delay(ms, value) {
             return new Promise(function DelayedPromise(resolve) {
-                global.setTimeout(resolve.bind(this, value), ms);
+                setTimeout(resolve.bind(this, value), ms);
             });
         };
 
@@ -1191,6 +1225,8 @@
 
         /** configuration **/
 
+        var queue = [];
+
         Promise.config = {
 
             /**
@@ -1344,15 +1380,14 @@
 
         };
 
-        Promise.config.setScheduler(global.setTimeout);
+        Promise.config.setScheduler(setTimeout);
 
         return Promise;
 
     });
 
-}(  window,
-    typeof define === 'function' && define.amd ? define :
-    function(factory) {
+}(typeof define === 'function' && define.amd ?
+    define : function define(factory) {
         'use strict';
         module.exports = factory(require);
     }));

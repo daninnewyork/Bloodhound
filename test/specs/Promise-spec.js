@@ -205,13 +205,58 @@ define(['Promise'], function(Promise) {
                     });
             });
 
-            it('child resolved with undefined value gets parent resolved value', function(done) {
-                Promise.resolve('abc').then(function handler1(value) {
-                    expect(value).toBe('abc');
-                }).then(function handler2(value) {
-                    expect(value).toBe('abc');
+            it('success callbacks fire in order provided', function(done) {
+
+                var results = [],
+                    promise = Promise.resolve(50),
+                    handler3 = function() {
+                        results.push(3);
+                    },
+                    handler2 = function() {
+                        results.push(2);
+                    },
+                    handler1 = function() {
+                        results.push(1);
+                        promise.then(handler3);
+                    };
+
+                promise.then(handler1);
+                promise.then(handler2);
+
+                promise.then(function() {
+                    setTimeout(function() {
+                        expect(results).toEqual([1, 2, 3]);
+                        done();
+                    }, 15);
+                });
+
+            });
+
+            it('resolved promise `then` only called once', function(done) {
+
+                var count = 0;
+
+                var promise = Promise.resolve(),
+                    thenable = Object.create(null, {
+                        then: {
+                            get: function() {
+                                ++count;
+                                return function(onFulfilled) {
+                                    onFulfilled();
+                                };
+                            }
+                        }
+                    });
+
+                promise.then(function() {
+                    return thenable;
+                });
+
+                promise.then(function() {
+                    expect(count).toBe(1);
                     done();
                 });
+
             });
 
         });
