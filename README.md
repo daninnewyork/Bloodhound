@@ -145,11 +145,6 @@ In this case, the timing data might look like the following:
           "stop": 1425943275776,
           "duration": 114,
           "children": []
-        },
-        {
-          "name": "anonymous",
-          "start": 1425943275663,
-          "children": []
         }
       ]
     }

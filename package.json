@@ -11,7 +11,8 @@
     "tracking",
     "timing",
     "performance",
-    "async"
+    "async",
+    "promises-aplus"
   ],
   "author": "Dan Barnes",
   "license": "MIT",
