@@ -5,6 +5,7 @@
     define(function() {
 
         var async,
+            errorRate = 0,
             collectors = [],
 
             States = {
@@ -322,7 +323,7 @@
          *   }
          * });
          */
-        function Promise(fn) {
+        function Promise(fn, ignoreFailureRate /* so callbacks can be set */) {
 
             if (!(this instanceof Promise)) {
                 return new Promise(fn);
@@ -364,10 +365,14 @@
             promise._state = States.PENDING;
 
             async(function invoke() {
-                try {
-                    fn.call(promise, resolve, reject, notify);
-                } catch (err) {
-                    reject(err);
+                if (!ignoreFailureRate && errorRate > 0 && Math.random() <= errorRate) {
+                    reject(new Error('random error!'));
+                } else {
+                    try {
+                        fn.call(promise, resolve, reject, notify);
+                    } catch (err) {
+                        reject(err);
+                    }
                 }
             });
 
@@ -432,7 +437,7 @@
                 child = new Promise(function ThenPromise(resolve, reject) {
                     parent._successes.push(wrapCallback(child, success, resolve, reject));
                     parent._failures.push(wrapCallback(child, failure, reject, reject));
-                });
+                }, true);
 
             if (typeof notify === 'function') {
                 parent._notifies.push(notify);
@@ -1254,6 +1259,19 @@
                         return fn.apply(null, args);
                     });
                 };
+            },
+
+            /**
+             * @todo document
+             * @todo unit test
+             */
+            setRandomErrorRate : function setErrorRate(rate) {
+                if (rate < 0 || rate > 1) {
+                    errorRate = Math.max(0, Math.min(rate, 100)) / 100;
+                } else {
+                    errorRate = rate;
+                }
+                return errorRate;
             },
 
             timing : {
