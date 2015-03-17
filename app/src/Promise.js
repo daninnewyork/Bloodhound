@@ -5,6 +5,7 @@
     define(function() {
 
         var async,
+            errorRate = 0,
             collectors = [],
 
             States = {
@@ -322,7 +323,7 @@
          *   }
          * });
          */
-        function Promise(fn) {
+        function Promise(fn, ignoreFailureRate /* so callbacks can be set */) {
 
             if (!(this instanceof Promise)) {
                 return new Promise(fn);
@@ -364,10 +365,14 @@
             promise._state = States.PENDING;
 
             async(function invoke() {
-                try {
-                    fn.call(promise, resolve, reject, notify);
-                } catch (err) {
-                    reject(err);
+                if (!ignoreFailureRate && errorRate > 0 && Math.random() <= errorRate) {
+                    reject(new Error('random error!'));
+                } else {
+                    try {
+                        fn.call(promise, resolve, reject, notify);
+                    } catch (err) {
+                        reject(err);
+                    }
                 }
             });
 
@@ -432,7 +437,7 @@
                 child = new Promise(function ThenPromise(resolve, reject) {
                     parent._successes.push(wrapCallback(child, success, resolve, reject));
                     parent._failures.push(wrapCallback(child, failure, reject, reject));
-                });
+                }, true);
 
             if (typeof notify === 'function') {
                 parent._notifies.push(notify);
@@ -1227,6 +1232,11 @@
 
         var queue = [];
 
+        /**
+         * Provides configuration options to change
+         * how Bloodhound works.
+         * @namespace Bloodhound.Promise.config
+         */
         Promise.config = {
 
             /**
@@ -1256,6 +1266,64 @@
                 };
             },
 
+            /**
+             * Used for testing promise rejection handling. Set the rate
+             * to a number between 0 and 1 or 0 and 100; the rate will
+             * determine how often promises are randomly rejected.
+             *
+             * **NOTE:** The random failure rate does not affect `Promise.resolve`
+             * or `Promise.reject` -- those methods will always resolve or
+             * reject with the specified value or reason.
+             * @function Bloodhound.Promise.config.setRandomErrorRate
+             * @param rate {Number} A number between 0 and 1 or 0 and 100 that
+             *  represents the rate at which random errors should be generated.
+             * @returns {Number} The new error rate, between 0 and 1.
+             * @throws Parameter `rate` must be a number.
+             * @example
+             * Promise.config.setRandomErrorRate(0.2); // 20%
+             * Promise.delay(50, 'hello').then(function(greeting) {
+             *   return greeting + ', world!';
+             * }).done();
+             * // calling `done()` above might throw the unhandled
+             * // rejection because the delayed promise now randomly
+             * // fails (about 1 in 5 times, or 20% of the time)
+             * @example
+             * Promise.config.setRandomErrorRate(50); // 50%
+             *
+             * function getUserData(login) {
+             *   return new Promise(function(resolve) {
+             *     // this may not be called if the
+             *     // promise is chosen to be randomly
+             *     // rejected
+             *     resolve({...});
+             *   });
+             * }
+             *
+             * getUserData('admin').then(function success(data) {
+             *   // process data
+             * }, function failure(err) {
+             *   // we handle the possible error here; if the
+             *   // error is because of a random failure, it
+             *   // will have 'random error!' as its message
+             * }).done(); // this will NOT throw because we
+             *            // handled the possible error above
+             */
+            setRandomErrorRate : function setErrorRate(rate) {
+                if (typeof rate !== 'number' || rate !== rate) {
+                    throw new TypeError('Parameter `rate` must be a number.');
+                }
+                errorRate = rate;
+                if (rate < 0 || rate > 1) {
+                    errorRate = Math.max(0, Math.min(rate, 100)) / 100;
+                }
+                return errorRate;
+            },
+
+            /**
+             * Allows configuration of timing-related options
+             * in Bloodhound.
+             * @namespace Bloodhound.Promise.config.timing
+             */
             timing : {
 
                 /**
@@ -1291,7 +1359,7 @@
                  * parents and all parents end on or after their children.
                  * The timing data will be more consistent but will no
                  * longer match the real execution order.
-                 * @function Bloodhound.Promise.config.timing.enable
+                 * @function Bloodhound.Promise.config.timing.useSaneTimings
                  * @example
                  * var parent = Promise.all([
                  *   Promise.delay(50),
@@ -1312,6 +1380,10 @@
 
             },
 
+            /**
+             * Allows you to register or un-register timing collectors.
+             * @namespace Bloodhound.Promise.config.collectors
+             */
             collectors : {
 
                 /**

@@ -1156,6 +1156,70 @@ define(['Promise'], function(Promise) {
             });
 
 
+            describe('setRandomErrorRate', function() {
+
+                afterEach(function() {
+                    Promise.config.setRandomErrorRate(0);
+                });
+
+                it('rate <= 0 set to 0', function() {
+                    expect(Promise.config.setRandomErrorRate(-1)).toBe(0);
+                    expect(Promise.config.setRandomErrorRate(-100)).toBe(0);
+                    expect(Promise.config.setRandomErrorRate(0)).toBe(0);
+                });
+
+                it('rate >= 100 set to 1', function() {
+                    expect(Promise.config.setRandomErrorRate(101)).toBe(1);
+                    expect(Promise.config.setRandomErrorRate(1000)).toBe(1);
+                    expect(Promise.config.setRandomErrorRate(100)).toBe(1);
+                });
+
+                it('rate >= 0 and <= 1 set to rate', function() {
+                    expect(Promise.config.setRandomErrorRate(0.4)).toBe(0.4);
+                    expect(Promise.config.setRandomErrorRate(0.01)).toBe(0.01);
+                    expect(Promise.config.setRandomErrorRate(0.99)).toBe(0.99);
+                });
+
+                it('Promise.resolve not affected', function(done) {
+                    Promise.config.setRandomErrorRate(1);
+                    Promise.resolve('abc').then(function(value) {
+                        expect(value).toBe('abc');
+                        done();
+                    });
+                });
+
+                it('Promise.reject not affected', function(done) {
+                    Promise.config.setRandomErrorRate(1);
+                    Promise.reject('reason').catch(function(reason) {
+                        expect(reason).toBe('reason');
+                        done();
+                    });
+                });
+
+                it('Promise constructor throws random errors', function(done) {
+
+                    Promise.config.setRandomErrorRate(0.5);
+
+                    var promises = [],
+                        data = { success: 0, failure: 0 },
+                        resolve = function(resolve) { resolve(data.success++); },
+                        failure = function() { data.failure++; };
+
+                    for (var i = 0; i < 100; i++) {
+                        promises.push(new Promise(resolve).catch(failure));
+                    }
+
+                    Promise.settle(promises).finally(function() {
+                        expect(data.success).not.toBe(0);
+                        expect(data.failure).not.toBe(0);
+                        expect(data.success + data.failure).toBe(promises.length);
+                        done();
+                    });
+
+                });
+
+            });
+
             describe('timing', function() {
 
                 it('disable disables timing', function(done) {
