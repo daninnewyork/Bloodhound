@@ -1158,23 +1158,6 @@ define(['Promise'], function(Promise) {
 
             describe('setRandomErrorRate', function() {
 
-                beforeEach(function() {
-                    jasmine.addMatchers({
-                        withinRange: function () {
-                            return {
-                                compare: function(actual, expected, delta) {
-                                    var min = expected - delta,
-                                        max = expected + delta;
-                                    return {
-                                        pass: actual >= min && actual <= max,
-                                        message: 'expected ' + actual + ' to be between ' + min + ' and ' + max
-                                    };
-                                }
-                            };
-                        }
-                    });
-                });
-
                 afterEach(function() {
                     Promise.config.setRandomErrorRate(0);
                 });
@@ -1219,16 +1202,17 @@ define(['Promise'], function(Promise) {
 
                     var promises = [],
                         data = { success: 0, failure: 0 },
-                        noop = function(resolve) { resolve(data.success++); },
+                        resolve = function(resolve) { resolve(data.success++); },
                         failure = function() { data.failure++; };
 
                     for (var i = 0; i < 100; i++) {
-                        promises.push(new Promise(noop).catch(failure));
+                        promises.push(new Promise(resolve).catch(failure));
                     }
 
                     Promise.settle(promises).finally(function() {
-                        expect(data.success).withinRange(50, 20);
-                        expect(data.failure).withinRange(50, 20);
+                        expect(data.success).not.toBe(0);
+                        expect(data.failure).not.toBe(0);
+                        expect(data.success + data.failure).toBe(promises.length);
                         done();
                     });
 
