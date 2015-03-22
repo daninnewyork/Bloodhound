@@ -1,7 +1,31 @@
 ## Bloodhound
 ### Tracked Promises in JavaScript
 
-## Why?
+## Installation
+
+To install for node:
+
+    npm install bloodhound-promises
+
+TODO Or the bower component:
+
+    bower install bloodhound-promises
+
+### Additional NPM Scripts
+
+To run the Bloodhound-specific Jasmine unit tests:
+
+    npm test
+
+To execute Bloodhound against the Promise/A+ specification test suite:
+
+    npm run-script verify
+
+To generate JSDoc documentation in the build/dev/doc/bloodhound-promises folder:
+    
+    npm run-script doc
+
+## Why Bloodhound?
 
 Promises are fantastic. They encapsulate a long-running operation into a simple object that
 invokes callbacks based on the operation's success or failure.
@@ -24,7 +48,7 @@ handle this situation.
 
 Enter Bloodhound.
 
-## How?
+## How Does Bloodhound Work?
 
 Bloodhound promises work just like regular promises (in fact, it fully implements the
 [A+ spec](https://promisesaplus.com/)), with a lot of the syntactic sugar that other promise
@@ -252,6 +276,66 @@ you could set the scheduler to use the MutationObserver:
         node.data = (i ^= 1);
     });
 
+### Pretty Stack Traces
+
+In an effort to improve stack traces during errors, Bloodhound provides a few useful
+features and configuration options.
+
+First, any named callback methods will be passively tracked automatically. Anonymous
+functions are not very helpful in stack traces, so by using named functions, you gain
+both better stack traces and better timing output.
+
+    Promise.resolve('abc').trackAs('parent')
+      .then(function myNamedCallback() { ... })
+      .done();
+
+Here is the resulting promise tree:
+
+    parent (actively tracked)
+     └ myNamedCallback (passively tracked)
+
+You can enable pretty stack traces using the following method:
+
+`Promise.config.prettyStacks.enable()`
+
+With pretty stacks enabled, code like this...
+
+    Promise.all([
+        Promise.delay(50, 'child-1').trackAs('child-1'),
+        Promise.delay(20, 'child-2').trackAs('child-2')
+    ]).trackAs('parent').then(function callback(values) {
+        return new Promise(function(resolve) {
+            resolve('some value');
+        }).then(function resolved() {
+            throw new Error('inner');
+        });
+    }).done();
+
+...will produce error output like this:
+
+    ERROR
+       at trackAs: parent
+       at function: callback
+       at constructor: Promise
+       at function: resolved
+
+      Error: inner
+          at inner (filename:<line>)
+          at parentSettled (Promise.js:<line>)
+          at push (Promise.js:<line>)
+          at ThenPromise (Promise.js:<line>)
+          at invoke (Promise.js:<line>)
+          at invoke (Promise.js:<line>)
+          at throwError (Promise.js:<line>)
+          at invoke (Promise.js:<line>)
+          at Promise.js:<line>
+
+**NOTE:** For performance reasons, the default state of Bloodhound is to *disable*
+pretty stack traces. If you have enabled pretty stacks and wish to disable them again,
+simply call:
+
+`Promise.config.prettyStacks.disable()`
+
 ### Timing Configuration
 
 `Promise.config.timing.enable()`
@@ -286,7 +370,7 @@ instead of just the root timing. Some collectors may also want us to persist sta
 stop times. All of this information is available through the timingData object, which
 has the following properties:
 
-    name {String} the tracked name of the promise, or 'anonymouse'
+    name {String} the tracked name of the promise, or 'anonymous'
     data {*} either the resolved value or rejection reason
     start {Number} when the promise was created, as the number of milliseconds since
         midnight, January 1, 1970 UTC
@@ -300,7 +384,7 @@ To register or de-register collectors, use the following methods:
 `Promise.config.collectors.add(collector) : Function`
 
 Adds the specified collector to the list of registered collectors, and returns a function
-you can invoke to remove the collector again.
+you can invoke to remove the collector.
 
     var collector = {
         collect: function(timingData) {

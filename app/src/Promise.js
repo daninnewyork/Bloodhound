@@ -4,9 +4,68 @@
 
     define(function() {
 
+        /**
+         * Represents an unhandled rejection in a Bloodhound
+         * promise. This is only thrown if `prettyStacks` are
+         * enabled and `done()` is called on a rejected promise.
+         *
+         * **NOTE:** UncaughtRejections are thrown asynchronously
+         * (i.e., on the next run of the scheduler) so that they
+         * will not be considered part of the promise chain.
+         * @class Bloodhound.UncaughtRejection
+         * @example
+         * Promise.config.prettyStacks.enable();
+         * Promise.reject('reason').done();
+         * // the above line will throw an UncaughtRejection
+         * // instance when the scheduler runs next
+         */
+        function UncaughtRejection(messageOrError, promise) {
+
+            /**
+             * A stack trace that contains the original stack trace (if
+             * any) as well as any tracking data Bloodhound could find.
+             * @member {String} Bloodhound.UncaughtRejection#stack
+             */
+
+            /**
+             * The original reason given when the promise was rejected.
+             * @member {String} Bloodhound.UncaughtRejection#reason
+             */
+
+            var _stack = '',
+                _stackCreated = false;
+
+            if (messageOrError instanceof Error) {
+                _stack = '\n\n' + messageOrError.stack;
+                this.message = messageOrError.message;
+            }
+
+            this.name = 'Uncaught Promise Rejection';
+            this.message = this.message || this.name;
+
+            Object.defineProperty(this, 'stack', {
+                enumerable: true,
+                get: function() {
+                    if (!_stackCreated) {
+                        _stackCreated = true;
+                        _stack = getStackTrace(promise) + _stack;
+                    }
+                    return _stack;
+                }
+            });
+
+        }
+
+        UncaughtRejection.prototype = new Error();
+        UncaughtRejection.prototype.constructor = UncaughtRejection;
+        UncaughtRejection.prototype.toString = function toString() {
+            return this.stack;
+        };
+
         var async,
             errorRate = 0,
             collectors = [],
+            usePrettyStacks = false,
 
             States = {
                 PENDING: 0,
@@ -16,9 +75,51 @@
 
             noop = function noop() {},
 
-            err = function err(reason) {
+            getStackTrace = function getStack(promise) {
+
+                var target,
+                    sep = '',
+                    name = '',
+                    result = '',
+                    rejects = [],
+                    childIsRejected = function childIsRejected(child) {
+                        return child._state === States.REJECTED;
+                    },
+                    findLowestReject = function findLowestRejectedChild(depth, target) {
+                        rejects[depth] = (rejects[depth] || []).concat(target._children.filter(childIsRejected));
+                        target._children.forEach(findLowestReject.bind(null, depth + 1));
+                    };
+
+                findLowestReject(0, promise);
+                while (!!rejects.length && !target) {
+                    var targets = rejects.pop();
+                    target = targets.shift();
+                }
+
+                target = target || promise;
+
+                while (!!target) {
+                    name = target._trackName ?
+                        (!target._isPassive ? 'trackAs: ' : 'function: ') + target._trackName :
+                        'constructor: Promise';
+                    result = name + sep + result;
+                    target = target._parent;
+                    sep = '\n at ';
+                }
+
+                return ' at ' + result;
+
+            },
+
+            err = function err(promise, reason) {
                 async(function throwError() {
-                    throw new Error(reason);
+                    if (usePrettyStacks) {
+                        throw new UncaughtRejection(reason, promise);
+                    } else if (!(reason instanceof Error)) {
+                        throw new Error(reason);
+                    } else {
+                        throw reason;
+                    }
                 });
             },
 
@@ -68,7 +169,7 @@
                         RESOLVER(promise, x._data);
                     }
 
-                    chain(promise._parent || promise, x);
+                    chain(promise, x);
 
                 } else if (!!x && (typeof x === 'object' || typeof x === 'function')) {
 
@@ -225,21 +326,25 @@
 
             },
 
+            setTrackNameFromMethod = function setTrackNameFromMethod(promise, callback) {
+                if (!promise._trackName) {
+                    // if the callback is not anonymous, we use the function
+                    // name as the passively tracked name so any persisted
+                    // timing data will be more easily understood
+                    var cbName = callback.toString().match(/function\s(\w+)/);
+                    if (cbName instanceof Array) {
+                        promise.trackAs(cbName.pop(), true);
+                    }
+                }
+            },
+
             wrapCallback = function wrapCallback(child, callback, propagate, reject) {
                 // used by promise.then() to wrap the success and failure callbacks
                 // so any values returned from those methods can be propagated correctly
                 // according to the Promise/A+ specification
                 return function parentSettled(value) {
                     if (typeof callback === 'function') {
-                        if (!child._trackName) {
-                            // if the callback is not anonymous, we use the function
-                            // name as the passively tracked name so any persisted
-                            // timing data will be more easily understood
-                            var cbName = callback.toString().match(/function\s(\w+)/);
-                            if (cbName instanceof Array) {
-                                child.trackAs(cbName.pop(), false);
-                            }
-                        }
+                        setTrackNameFromMethod(child, callback);
                         try {
                             RESOLVER(child, callback(value));
                         } catch (err) {
@@ -260,7 +365,7 @@
                 arr.push = function push(fn) {
                     if (promise._state === state) {
                         fn(promise._data);
-                    } else {
+                    } else if (promise._state === States.PENDING) {
                         Array.prototype.push.call(arr, fn);
                     }
                 };
@@ -709,7 +814,7 @@
          */
         Promise.prototype.done = function done() {
             var persist = Timing.persistTimings.bind(this);
-            this._failures.push(err);
+            this._failures.push(err.bind(null, this));
             this._failures.push(persist);
             this._successes.push(persist);
             return this;
@@ -1317,6 +1422,41 @@
                     errorRate = Math.max(0, Math.min(rate, 100)) / 100;
                 }
                 return errorRate;
+            },
+
+            /**
+             * Configures the use of helpful stack traces when calling
+             * `done()` on promises containing unhandled rejections. Because
+             * these stack traces can take some additional processing time,
+             * they should only be enabled during development. The default
+             * state of Bloodhound is to *disable* pretty stack traces.
+             * @namespace Bloodhound.Promise.config.prettyStacks
+             */
+            prettyStacks : {
+
+                /**
+                 * Enables pretty stack traces for promises with
+                 * unhandled rejections.
+                 * @function Bloodhound.Promise.config.prettyStacks.enable
+                 * @example
+                 * Promise.config.prettyStacks.enable();
+                 */
+                enable: function enablePrettyStacks() {
+                    usePrettyStacks = true;
+                },
+
+                /**
+                 * Disables pretty stack traces for promises with
+                 * unhandled rejections. This is the default configuration
+                 * for Bloodhound promises.
+                 * @function Bloodhound.Promise.config.prettyStacks.disable
+                 * @example
+                 * Promise.config.prettyStacks.disable();
+                 */
+                disable: function disablePrettyStacks() {
+                    usePrettyStacks = false;
+                }
+
             },
 
             /**
