@@ -19,7 +19,7 @@ define(['Promise'], function(Promise) {
             this.enableSync = function enableSync() {
                 this.origScheduler = window.setTimeout;
                 Promise.config.setScheduler(function scheduler(fn) {
-                    return fn.apply(null, [].slice.call(arguments, 1));
+                    return fn();
                 });
             }.bind(this);
         });
@@ -409,12 +409,13 @@ define(['Promise'], function(Promise) {
 
         describe('done', function() {
 
-            it('throws error if promise rejected', function() {
+            it('throws error if promise rejected', function(done) {
                 this.enableSync();
                 try {
                     Promise.reject('rejected').done();
                 } catch (err) {
                     expect(err.message).toBe('rejected');
+                    done();
                 }
             });
 
@@ -1012,16 +1013,16 @@ define(['Promise'], function(Promise) {
                 expect(parent._children.indexOf(child)).not.toBe(-1);
             });
 
-            it('adds root of child to parent', function(done) {
+            it('adds returned child to callback', function(done) {
 
-                var parent = Promise.resolve(),
+                var parent = Promise.resolve().trackAs('parent'),
                     root = Promise.resolve().trackAs('root'),
-                    child = root.then().then().then();
+                    child = root.then().then().then().trackAs('child');
 
-                parent.then(function() {
+                parent.then(function callback() {
                     return child;
-                }).finally(function() {
-                    expect(root._parent).toBe(parent);
+                }).done().finally(function() {
+                    expect(root._parent._trackName).toBe('callback');
                     done();
                 });
 
