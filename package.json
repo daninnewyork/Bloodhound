@@ -14,6 +14,10 @@
     "async",
     "promises-aplus"
   ],
+  "repository": {
+      "type": "git",
+      "url": "git://github.com/daninnewyork/Bloodhound.git"
+  },
   "author": "Dan Barnes",
   "license": "MIT",
   "devDependencies": {

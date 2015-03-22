@@ -7,7 +7,7 @@ To install for node:
 
     npm install bloodhound-promises
 
-TODO Or the bower component:
+Or the bower component:
 
     bower install bloodhound-promises
 
