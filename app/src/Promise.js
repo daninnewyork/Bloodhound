@@ -1130,18 +1130,31 @@
          * }).done();
          */
         Promise.hash = function hash(obj) {
+
             var keys = Object.getOwnPropertyNames(obj),
                 promises = keys.map(function cast(key) {
                     return Promise.cast(obj[key]);
                 });
-            return getArrayPromise(promises, function HashPromise(resolve, reject) {
-                Promise.settle(promises).then(function mapResults(results) {
-                    var result = {};
-                    keys.forEach(function iter(key, index) {
-                        result[key] = results[index]._data;
-                    });
-                    resolve(result);
-                }, reject).done();
+
+            return getArrayPromise(promises, function HashPromise(resolve, reject, notify) {
+
+                var count = 0,
+                    result = {},
+                    length = promises.length,
+                    settled = function settled(key, valueOrReason) {
+                        result[key] = valueOrReason;
+                        notify(Math.ceil(++count / length * 100));
+                        if (count >= length) {
+                            resolve(result);
+                        }
+                    };
+
+                promises.forEach(function(promise, index) {
+                    var handler = settled.bind(null, keys[index]);
+                    promise._failures.push(handler);
+                    promise._successes.push(handler);
+                });
+
             });
         };
 
@@ -1334,8 +1347,6 @@
         };
 
         /** configuration **/
-
-        var queue = [];
 
         /**
          * Provides configuration options to change
