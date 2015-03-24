@@ -372,6 +372,19 @@
                 return arr;
             },
 
+            deferResolve = function deferResolve(value, resolve, reject) {
+                // sometimes we want to call resolve directly,
+                // but want to delegate to a promise, if one
+                // was provided, before deciding whether to
+                // invoke resolve or reject (e.g., from Promise.call
+                // or Promise.resolve); this does that for us
+                if (value instanceof Promise) {
+                    value.then(resolve, reject);
+                } else {
+                    resolve(value);
+                }
+            },
+
             settle = function settle(promise, state, data) {
                 // this is the method used by resolve and
                 // reject to ensure a settled promise cannot
@@ -673,7 +686,13 @@
 
         /**
          * Registers a callback to be invoked when the promise
-         * is settled (i.e. either resolved or rejected).
+         * is settled (i.e. either resolved or rejected) and
+         * returns a new promise instance. If the registered
+         * callback returns a promise, the original returned
+         * promise will defer to the callback's promise. Otherwise,
+         * any other return value will be ignored, and subsequent
+         * chained callbacks will receive the original promise
+         * value or rejection.
          * @function Bloodhound.Promise#finally
          * @param [callback] {Function} The function to invoke
          *  when the promise is settled (resolved or rejected).
@@ -685,10 +704,31 @@
          *     return 'def';
          *   }).finally(function(valueOrReason) {
          *     log(valueOrReason); // 'def'
+         *     return 'ghi'; // this isn't a promise,
+         *     // so it will be ignored; subsequent
+         *     // callbacks will be sent the original
+         *     // resolved value or rejection reason
+         *   }).then(function(value) {
+         *     log(valueOrReason); // still 'def'
          *   });
          */
         Promise.prototype.finally = function onSettled(callback) {
-            return this.then(callback, callback);
+            function getWrappedCallback(isError) {
+                return function finallyCallback(valueOrReason) {
+                    var value = callback(valueOrReason);
+                    if (Promise.isPromise(value)) {
+                        return value;
+                    } else if (isError) {
+                        throw valueOrReason;
+                    } else {
+                        return valueOrReason;
+                    }
+                };
+            }
+            return this.then(
+                getWrappedCallback(false),
+                getWrappedCallback(true)
+            );
         };
 
         /**
@@ -882,7 +922,7 @@
          */
         Promise.resolve = function resolve(value) {
             var promise = new Promise(noop);
-            promise._resolve(value);
+            deferResolve(value, promise._resolve, promise._reject);
             return promise;
         };
 
@@ -1008,8 +1048,10 @@
          * }).done();
          */
         Promise.delay = Promise.wait = function delay(ms, value) {
-            return new Promise(function DelayedPromise(resolve) {
-                setTimeout(resolve.bind(this, value), ms);
+            return new Promise(function DelayedPromise(resolve, reject) {
+                setTimeout(function() {
+                    deferResolve(value, resolve, reject);
+                }, ms);
             });
         };
 
@@ -1037,8 +1079,8 @@
                 throw new TypeError('Method expects a function to be specified.');
             }
             var args = [].slice.call(arguments, 1);
-            return new Promise(function TryPromise(resolve) {
-                resolve(fn.apply(null, args));
+            return new Promise(function TryPromise(resolve, reject) {
+                deferResolve(fn.apply(null, args), resolve, reject);
             });
         };
 
@@ -1149,11 +1191,15 @@
                         }
                     };
 
-                promises.forEach(function(promise, index) {
-                    var handler = settled.bind(null, keys[index]);
-                    promise._failures.push(handler);
-                    promise._successes.push(handler);
-                });
+                if (length === 0) {
+                    resolve({});
+                } else {
+                    promises.forEach(function(promise, index) {
+                        var handler = settled.bind(null, keys[index]);
+                        promise._failures.push(handler);
+                        promise._successes.push(handler);
+                    });
+                }
 
             });
         };

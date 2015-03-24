@@ -340,12 +340,49 @@ define(['Promise'], function(Promise) {
 
         describe('finally', function() {
 
-            it('calls then with callback, callback', function() {
-                var promise = Promise.resolve(),
-                    callback = function() {};
-                spyOn(promise, 'then');
-                promise.finally(callback);
-                expect(promise.then).toHaveBeenCalledWith(callback, callback);
+            it('callback invoked for success', function(done) {
+                Promise.resolve('abc').finally(function callback(value) {
+                    expect(value).toBe('abc');
+                    done();
+                }).done();
+            });
+
+            it('callback invoked for failure', function(done) {
+                Promise.reject('reason').finally(function callback(reason) {
+                    expect(reason).toBe('reason');
+                    done();
+                })  .catch(function(){})
+                    .done();
+            });
+
+            it('if callback does not return promise, original value passed through', function(done) {
+                Promise.delay(10, 'abc')
+                    .finally(function callback(value) {
+                        expect(value).toBe('abc');
+                    }).then(function(value) {
+                        expect(value).toBe('abc');
+                        done();
+                    }).done();
+            });
+
+            it('if callback does not return promise, original rejection passed through', function(done) {
+                Promise.delay(10, new Error('rejection'))
+                    .finally(function callback(value) {
+                        expect(value instanceof Error).toBe(true);
+                    })
+                    .catch(done)
+                    .done();
+            });
+
+            it('if callback returns promise, promise defers to it', function(done) {
+                Promise.delay(10, 'abc')
+                    .finally(function callback(value) {
+                        return Promise.delay(20, 'hello ' + value);
+                    })
+                    .then(function(value) {
+                        expect(value).toBe('hello abc');
+                        done();
+                    }).done();
             });
 
         });
@@ -477,6 +514,13 @@ define(['Promise'], function(Promise) {
                 expect(window.setTimeout.calls.any()).toBe(false);
                 expect(Promise.resolve('value')._data).toBe('value');
                 expect(window.setTimeout.calls.any()).toBe(false);
+            });
+
+            it('defers to resolved promise', function(done) {
+                Promise.resolve(Promise.delay(40, 'abc')).then(function(value) {
+                    expect(value).toBe('abc');
+                    done();
+                })
             });
 
         });
@@ -613,6 +657,13 @@ define(['Promise'], function(Promise) {
                 });
             });
 
+            it('defers to resolved promise', function(done) {
+                Promise.delay(50, Promise.delay(10, 'abc')).then(function(value) {
+                    expect(value).toBe('abc');
+                    done();
+                });
+            })
+
         });
 
         describe('timeout', function() {
@@ -680,6 +731,15 @@ define(['Promise'], function(Promise) {
                     expect(err instanceof Error).toBe(true);
                     done();
                 });
+            });
+
+            it('defers to returned promise', function(done) {
+                Promise.call(function() {
+                    return Promise.delay(40, 'abc');
+                }).then(function(value) {
+                    expect(value).toBe('abc');
+                    done();
+                })
             });
 
         });
