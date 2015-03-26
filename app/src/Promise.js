@@ -150,7 +150,7 @@
                 // found at https://promisesaplus.com/
 
                 if (promise === x) {
-                    promise._reject(new TypeError());
+                    settle(promise, States.REJECTED, new TypeError());
                 } else if (x instanceof Promise) {
 
                     if (Cycle.inChain(x, promise)) {
@@ -161,16 +161,18 @@
                         x.then(function (val) {
                             RESOLVER(promise, val);
                         }, function (reason) {
-                            promise._reject(reason);
+                            settle(promise, States.REJECTED, reason);
                         });
                     } else if (x._state === States.REJECTED) {
-                        promise._reject(x._data);
+                        settle(promise, States.REJECTED, x._data);
                     } else {
                         RESOLVER(promise, x._data);
                     }
 
                     chain(promise, x);
 
+                } else if (x instanceof Error) {
+                    settle(promise, States.REJECTED, x);
                 } else if (!!x && (typeof x === 'object' || typeof x === 'function')) {
 
                     var then,
@@ -188,23 +190,23 @@
                                 },
                                 function chainedReject(reason) {
                                     if (!called) {
-                                        promise._reject(reason);
+                                        settle(promise, States.REJECTED, reason);
                                         called = true;
                                     }
                                 });
                         } else {
-                            promise._resolve(x);
+                            settle(promise, States.RESOLVED, x);
                             called = true;
                         }
                     } catch (e) {
                         if (!called) {
-                            promise._reject(e);
+                            settle(promise, States.REJECTED, e);
                             called = true;
                         }
                     }
 
                 } else {
-                    promise._resolve(x);
+                    settle(promise, States.RESOLVED, x);
                 }
 
             },
@@ -372,20 +374,6 @@
                 return arr;
             },
 
-            deferResolve = function deferResolve(value, promise) {
-                // sometimes we want to call resolve directly,
-                // but want to delegate to a promise, if one
-                // was provided, before deciding whether to
-                // invoke resolve or reject (e.g., from Promise.call
-                // or Promise.resolve); this does that for us
-                if (value instanceof Promise) {
-                    chain(promise, value);
-                    value.then(promise._resolve, promise._reject);
-                } else {
-                    promise._resolve(value);
-                }
-            },
-
             settle = function settle(promise, state, data) {
                 // this is the method used by resolve and
                 // reject to ensure a settled promise cannot
@@ -455,11 +443,7 @@
             var promise = this,
 
                 resolve = function resolver(value) {
-                    if (value instanceof Error) {
-                        settle(promise, States.REJECTED, value);
-                    } else {
-                        settle(promise, States.RESOLVED, value);
-                    }
+                    RESOLVER(promise, value);
                 },
 
                 reject = function rejecter(reason) {
@@ -923,7 +907,7 @@
          */
         Promise.resolve = function resolve(value) {
             var promise = new Promise(noop);
-            deferResolve(value, promise);
+            promise._resolve(value);
             return promise;
         };
 
@@ -1049,11 +1033,8 @@
          * }).done();
          */
         Promise.delay = Promise.wait = function delay(ms, value) {
-            return new Promise(function DelayedPromise(resolve, reject) {
-                var promise = this;
-                setTimeout(function() {
-                    deferResolve(value, promise);
-                }, ms);
+            return new Promise(function DelayedPromise(resolve) {
+                setTimeout(resolve.bind(this, value), ms);
             });
         };
 
@@ -1081,8 +1062,8 @@
                 throw new TypeError('Method expects a function to be specified.');
             }
             var args = [].slice.call(arguments, 1);
-            return new Promise(function TryPromise(resolve, reject) {
-                deferResolve(fn.apply(null, args), this);
+            return new Promise(function TryPromise(resolve) {
+                resolve(fn.apply(null, args));
             });
         };
 

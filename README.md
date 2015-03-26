@@ -175,8 +175,8 @@ In this case, the timing data might look like the following:
 
 This is already excellent data -- we can quickly see that our application
 is taking a long time loading application data. Before, we would simply see
-that the initial load took 124 seconds; but figuring out why would be a lot
-more difficult.
+that the initial load took 124 milliseconds; but figuring out why would be a
+lot more difficult.
 
 If you look closely, you'll notice that the timing data for 'load messages'
 and 'load app data' both start *before* the parent and end *after*. Why?
