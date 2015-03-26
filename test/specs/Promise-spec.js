@@ -502,6 +502,14 @@ define(['Promise'], function(Promise) {
 
         describe('resolve', function() {
 
+            it('resolves with promise defers', function(done) {
+                Promise.resolve(Promise.delay(20, 'abc'))
+                    .then(function(value) {
+                        expect(value).toBe('abc');
+                        done();
+                    });
+            });
+
             it('resolves synchronously', function() {
                 spyOn(window, 'setTimeout');
                 expect(window.setTimeout.calls.any()).toBe(false);
