@@ -222,7 +222,7 @@
                 },
 
                 anyActiveTracks : function anyActiveTracks(node) {
-                    return !!node._trackName && (!node._isPassive || node._children.some(Timing.anyActiveTracks));
+                    return node._isPassive === false || node._children.some(Timing.anyActiveTracks);
                 },
 
                 addChildren : function addChildren(timing, children) {
@@ -372,16 +372,17 @@
                 return arr;
             },
 
-            deferResolve = function deferResolve(value, resolve, reject) {
+            deferResolve = function deferResolve(value, promise) {
                 // sometimes we want to call resolve directly,
                 // but want to delegate to a promise, if one
                 // was provided, before deciding whether to
                 // invoke resolve or reject (e.g., from Promise.call
                 // or Promise.resolve); this does that for us
                 if (value instanceof Promise) {
-                    value.then(resolve, reject);
+                    chain(promise, value);
+                    value.then(promise._resolve, promise._reject);
                 } else {
-                    resolve(value);
+                    promise._resolve(value);
                 }
             },
 
@@ -922,7 +923,7 @@
          */
         Promise.resolve = function resolve(value) {
             var promise = new Promise(noop);
-            deferResolve(value, promise._resolve, promise._reject);
+            deferResolve(value, promise);
             return promise;
         };
 
@@ -1049,8 +1050,9 @@
          */
         Promise.delay = Promise.wait = function delay(ms, value) {
             return new Promise(function DelayedPromise(resolve, reject) {
+                var promise = this;
                 setTimeout(function() {
-                    deferResolve(value, resolve, reject);
+                    deferResolve(value, promise);
                 }, ms);
             });
         };
@@ -1080,7 +1082,7 @@
             }
             var args = [].slice.call(arguments, 1);
             return new Promise(function TryPromise(resolve, reject) {
-                deferResolve(fn.apply(null, args), resolve, reject);
+                deferResolve(fn.apply(null, args), this);
             });
         };
 
