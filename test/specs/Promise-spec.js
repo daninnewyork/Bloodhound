@@ -1129,6 +1129,22 @@ define(['Promise'], function(Promise) {
                 });
             });
 
+            it('bug #15: does not chain if cycle *would be* created', function(done) {
+
+                var base = Promise.delay(10, 'base').trackAs('base'),
+                    parent = base.then(function createParent() {
+                        return Promise.delay(10, 'parent').trackAs('parent');
+                    }),
+                    child = parent.then(function createChildFromBase() {
+                        return base.then(function baseResolvedCreateChild() {
+                            return Promise.delay(10, 'child').trackAs('child');
+                        });
+                    });
+
+                child.then(done); // should resolve
+
+            });
+
         });
 
         describe('config', function() {

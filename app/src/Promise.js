@@ -136,10 +136,17 @@
                     );
                 },
 
-                inChain : function inChain(toCheck, promise) {
-                    return toCheck === promise ||
+                inChain : function inChain(toCheck, promise, checkPotentialCycle) {
+
+                    var cycleExists = toCheck === promise ||
                         Cycle.inParents(toCheck, promise) ||
                         Cycle.inChildren(toCheck, promise);
+
+                    return cycleExists || (
+                        !!checkPotentialCycle &&
+                        Cycle.inParents(promise._parent, toCheck)
+                    );
+
                 }
 
             },
@@ -308,7 +315,7 @@
 
             chain = function chain(parent, child) {
 
-                if (Cycle.inChain(parent, child)) {
+                if (Cycle.inChain(parent, child, true /* also check for potential cycle */)) {
                     return;
                 }
 
