@@ -336,6 +336,32 @@ simply call:
 
 `Promise.config.prettyStacks.disable()`
 
+### Random Errors
+
+`Promise.config.setRandomErrorRate(Number)`
+
+Configures Bloodhound to randomly reject promises at the rate specified. You can pass
+a number between 0 and 100 or between 0 and 1. The number represents the percent of time
+a promise should be randomly rejected.
+
+	Promise.config.setRandomErrorRate(0); // never reject; the default
+	Promise.config.setRandomErrorRate(50); // reject half the time
+	Promise.config.setRandomErrorRate(100); // reject 100% of the time
+
+These are equivalent to:
+
+	Promise.config.setRandomErrorRate(0); // never reject; the default
+	Promise.config.setRandomErrorRate(0.5); // reject half the time
+	Promise.config.setRandomErrorRate(1); // reject 100% of the time
+
+Why Enable Random Errors? Unhandled promise rejections represent potential logical errors,
+unexpected network problems, and/or inconsistent application state. Identifying and fixing
+unhandled promise rejections ensures your application always recovers gracefully.
+
+**NOTE:** The random error rate does *not* apply to `Promise.resolve` or `Promise.reject`.
+These methods will always work as expected by resolving or rejecting with the specified
+value or reason.
+
 ### Timing Configuration
 
 `Promise.config.timing.enable()`
