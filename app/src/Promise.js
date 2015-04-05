@@ -1307,6 +1307,7 @@
                 var numRejected = 0,
                     numResolved = 0,
                     BAD_TOKEN = '\x18',
+                    rejectionData = [],
                     total = promises.length,
                     resolved = new Array(total),
                     increment = function increment(index, value) {
@@ -1317,10 +1318,17 @@
                             }));
                         }
                     },
-                    checkPossible = function checkPossible(index) {
+                    checkPossible = function checkPossible(index, data) {
                         resolved[index] = BAD_TOKEN;
+                        rejectionData.push(data);
                         if (++numRejected > (total - count)) {
-                            reject('Desired count not met.');
+                            var empty = 'Error: ',
+                                fallback = '(none given)',
+                                errorMessage = rejectionData.reduce(function(msg, rejection) {
+                                    var error = (rejection || empty).toString();
+                                    return msg + '\n - ' + (error === empty ? fallback : error);
+                                }, numRejected + ' promises failed; rejection reasons:');
+                            reject(errorMessage);
                         }
                     };
 
@@ -1330,7 +1338,7 @@
                     resolve([]);
                 } else {
                     promises.forEach(function iter(child, index) {
-                        child._failures.push(checkPossible);
+                        child._failures.push(checkPossible.bind(null, index));
                         child._successes.push(increment.bind(null, index));
                     });
                 }

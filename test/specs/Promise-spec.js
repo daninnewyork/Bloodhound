@@ -528,7 +528,7 @@ define(['Promise'], function(Promise) {
                 Promise.resolve(Promise.delay(40, 'abc')).then(function(value) {
                     expect(value).toBe('abc');
                     done();
-                })
+                });
             });
 
         });
@@ -670,7 +670,7 @@ define(['Promise'], function(Promise) {
                     expect(value).toBe('abc');
                     done();
                 });
-            })
+            });
 
         });
 
@@ -747,7 +747,7 @@ define(['Promise'], function(Promise) {
                 }).then(function(value) {
                     expect(value).toBe('abc');
                     done();
-                })
+                });
             });
 
         });
@@ -890,7 +890,7 @@ define(['Promise'], function(Promise) {
                     Promise.delay(100, 'ghi'),
                     Promise.reject()
                 ], 4).catch(function(reason) {
-                    expect(reason).toBe('Desired count not met.');
+                    expect(reason).toContain('2 promises failed');
                     done();
                 });
             });
