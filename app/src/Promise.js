@@ -136,17 +136,11 @@
                     );
                 },
 
-                inChain : function inChain(toCheck, promise, checkPotentialCycle) {
-
-                    var cycleExists = toCheck === promise ||
+                wouldExist : function wouldExist(toCheck, promise) {
+                    return toCheck === promise ||
                         Cycle.inParents(toCheck, promise) ||
+                        Cycle.inParents(promise._parent, toCheck) ||
                         Cycle.inChildren(toCheck, promise);
-
-                    return cycleExists || (
-                        !!checkPotentialCycle &&
-                        Cycle.inParents(promise._parent, toCheck)
-                    );
-
                 }
 
             },
@@ -160,8 +154,8 @@
                     settle(promise, States.REJECTED, new TypeError());
                 } else if (x instanceof Promise) {
 
-                    if (Cycle.inChain(x, promise)) {
-                        throw new Error('Cycle created in promise chain.');
+                    if (Cycle.inParents(promise, x)) {
+                        throw new Error('Cycle would be created in promise chain.');
                     }
 
                     if (x._state === States.PENDING) {
@@ -315,7 +309,7 @@
 
             chain = function chain(parent, child) {
 
-                if (Cycle.inChain(parent, child, true /* also check for potential cycle */)) {
+                if (Cycle.wouldExist(parent, child)) {
                     return;
                 }
 

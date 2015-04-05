@@ -1101,7 +1101,7 @@ define(['Promise'], function(Promise) {
                     parent = ancestor.then(function() {
                         return parent;
                     }).catch(function(err) {
-                        expect(err.message).toBe('Cycle created in promise chain.');
+                        expect(err.message).toBe('Cycle would be created in promise chain.');
                         done();
                     });
             });
