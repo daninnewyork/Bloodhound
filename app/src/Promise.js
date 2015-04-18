@@ -37,6 +37,7 @@
 
             if (messageOrError instanceof Error) {
                 _stack = '\n\n' + messageOrError.stack;
+                this.causedBy = messageOrError;
                 this.message = messageOrError.message;
             }
 
