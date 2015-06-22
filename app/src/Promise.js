@@ -310,10 +310,6 @@
 
             chain = function chain(parent, child) {
 
-                if (Cycle.wouldExist(parent, child)) {
-                    return;
-                }
-
                 var root = child,
                     ancestor = root._parent;
 
@@ -323,6 +319,10 @@
                     }
                     root = ancestor;
                     ancestor = root._parent;
+                }
+
+                if (Cycle.wouldExist(parent, root)) {
+                    return;
                 }
 
                 root._parent = parent;

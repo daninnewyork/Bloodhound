@@ -1145,6 +1145,43 @@ define(['Promise'], function(Promise) {
 
             });
 
+            it('does not chain if cycle *would be* created', function(done) {
+
+                var called = [],
+                    init = Promise.delay(100, 'init'),
+                    load = Promise.delay(200, 'load').then(function() {
+                        return {
+                            method: function() {
+                                return init.then(function() {
+                                    return Promise.delay(100, 'value');
+                                })
+                            }
+                        };
+                    });
+
+                setTimeout(function() {
+                    load.then(function(api) {
+                        return api.method().then(function(value) {
+                            called.push(1);
+                            expect(value).toBe('value');
+                            expect(called).toEqual([1]);
+                        });
+                    }).done();
+                }, 1000);
+
+                setTimeout(function() {
+                    load.then(function(api) {
+                        return api.method().then(function(value) {
+                            called.push(2);
+                            expect(value).toBe('value');
+                            expect(called).toEqual([1, 2]);
+                            done();
+                        });
+                    }).done();
+                }, 2000);
+
+            });
+
         });
 
         describe('config', function() {
