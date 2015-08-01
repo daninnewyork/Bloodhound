@@ -1188,6 +1188,82 @@ define(['Promise'], function(Promise) {
 
         describe('config', function() {
 
+            describe('onUnhandledRejection', function() {
+
+                it('throws if non-function provided', function() {
+                    expect(Promise.config.onUnhandledRejection.bind(null)).toThrowError(
+                        'Parameter `handler` must be a function.'
+                    );
+                });
+
+                it('invokes handler if rejection unhandled', function(done) {
+                    var remove = Promise.config.onUnhandledRejection(function(e) {
+                        e.handled = true;
+                        remove();
+                        done();
+                    });
+                    Promise.reject('reason').done();
+                });
+
+                it('returns function to remove handler', function(done) {
+                    var handler = jasmine.createSpy('handler').and.callFake(function(e) {
+                            remove();
+                            expect(e.reason).toBe('reason 1');
+                            e.handled = true;
+                        }),
+                        handler2 = jasmine.createSpy('handler2').and.callFake(function(e) {
+                            remove2();
+                            expect(e.reason).toBe('reason 2');
+                            expect(handler).not.toHaveBeenCalledWith('reason 2');
+                            e.handled = true;
+                            done();
+                        }),
+                        remove = Promise.config.onUnhandledRejection(handler),
+                        remove2 = Promise.config.onUnhandledRejection(handler2);
+                    expect(typeof remove).toBe('function');
+                    Promise.reject('reason 1').done();
+                    setTimeout(function() {
+                        Promise.reject('reason 2').done();
+                    }, 50);
+                });
+
+                it('does not invoke subequent handler if e.handled set to true', function(done) {
+                    var handler1 = function(e) { e.handled = true; },
+                        handler2 = function() { throw new Error(); },
+                        remove1 = Promise.config.onUnhandledRejection(handler1),
+                        remove2 = Promise.config.onUnhandledRejection(handler2);
+                    Promise.reject('reason').done();
+                    setTimeout(function() {
+                        remove1();
+                        remove2();
+                        done();
+                    }, 50);
+                });
+
+                it('does not throw exception if e.handled set to true', function(done) {
+                    var handler = function(e) { e.handled = true; },
+                        remove = Promise.config.onUnhandledRejection(handler);
+                    Promise.reject('reason').done();
+                    setTimeout(function() {
+                        remove();
+                        done();
+                    }, 50);
+                });
+
+                it('throws exception if no handler sets e.handled to true', function(done) {
+                    this.enableSync();
+                    var handler = function(e) {},
+                        remove = Promise.config.onUnhandledRejection(handler);
+                    try {
+                        Promise.reject('reason').done();
+                    } catch (e) {
+                        remove();
+                        done();
+                    }
+                });
+
+            });
+
             describe('setScheduler', function() {
 
                 it('throws if argument is not a function', function() {

@@ -69,6 +69,7 @@
             errorRate = 0,
             collectors = [],
             usePrettyStacks = false,
+            unhandledRejectionHandlers = [],
 
             States = {
                 PENDING: 0,
@@ -115,15 +116,24 @@
             },
 
             err = function err(promise, reason) {
-                async(function throwError() {
-                    if (usePrettyStacks) {
-                        throw new UncaughtRejection(reason, promise);
-                    } else if (!(reason instanceof Error)) {
-                        throw new Error(reason);
-                    } else {
-                        throw reason;
+                var e = {promise: promise, reason: reason, handled: false};
+                for(var i = 0, l = unhandledRejectionHandlers.length; i < l; i++) {
+                    unhandledRejectionHandlers[i](e);
+                    if (e.handled) {
+                        break;
                     }
-                });
+                }
+                if (!e.handled) {
+                    async(function throwError() {
+                        if (usePrettyStacks) {
+                            throw new UncaughtRejection(reason, promise);
+                        } else if (!(reason instanceof Error)) {
+                            throw new Error(reason);
+                        } else {
+                            throw reason;
+                        }
+                    });
+                }
             },
 
             Cycle = {
@@ -1407,6 +1417,39 @@
          * @namespace Bloodhound.Promise.config
          */
         Promise.config = {
+
+            /**
+             * Adds a handler that will be invoked if `done()` is
+             * called on a promise in a rejected state. The handler
+             * will be invoked with `e = {promise, reason, handled}`
+             * where the handler can set `e.handled = true` to
+             * prevent subsequent handlers from being invoked and to
+             * prevent an UnhandledRejection error from being thrown.
+             * @function Bloodhound.Promise.config.onUnhandledRejection
+             * @param handler {Function} The function to invoke when
+             *  done() is called on a promise in a rejected state.
+             * @returns {Function} A method that can be invoked to
+             *  remove the unhandled rejection handler.
+             * @throws Parameter `handler` must be a function.
+             * @example
+             * var removeHandler = Promise.config.onUnhandledRejection(
+             *   function handler(e) {
+             *     log(e.promise.toString(), 'failed because', e.reason);
+             *     e.handled = true; // do not throw an error
+             *   });
+             * window.addEventListener('unload', removeHandler);
+             */
+            onUnhandledRejection : function onUnhandledRejection(handler) {
+                if (typeof handler !== 'function') {
+                    throw new TypeError('Parameter `handler` must be a function.');
+                }
+                unhandledRejectionHandlers.push(handler);
+                return function removeHandler() {
+                    unhandledRejectionHandlers.splice(
+                        unhandledRejectionHandlers.indexOf(handler), 1
+                    );
+                };
+            },
 
             /**
              * Sets the scheduler function used internally by
