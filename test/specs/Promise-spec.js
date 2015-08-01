@@ -1,5 +1,7 @@
 define(['Promise'], function(Promise) {
 
+    /* global window, spyOn, setTimeout, setInterval, clearInterval: false */
+
     'use strict';
 
     if (!Function.prototype.bind) {
@@ -800,8 +802,6 @@ define(['Promise'], function(Promise) {
                     expect(promises[2].isRejected()).toBe(true);
                     expect(promises[3].isResolved()).toBe(true);
                     done();
-                }).catch(function(reason) {
-                    console.log(reason);
                 });
             });
 
@@ -1057,23 +1057,6 @@ define(['Promise'], function(Promise) {
 
         describe('chain', function() {
 
-            beforeEach(function addUtilMethods() {
-                this.showChain = function showChain(promise) {
-                    var index = 0,
-                        target = promise,
-                        root = target._parent,
-                        log = function log(node) {
-                            console.log(new Array(++index).join('  ') + (node._trackName || 'anonymous'));
-                            node._children.forEach(log);
-                        };
-                    while (!!root) {
-                        target = root;
-                        root = target._parent;
-                    }
-                    log(target, 0);
-                };
-            });
-
             it('adds child to parent', function() {
                 var parent = Promise.resolve(),
                     child = parent.then();
@@ -1154,7 +1137,7 @@ define(['Promise'], function(Promise) {
                             method: function() {
                                 return init.then(function() {
                                     return Promise.delay(100, 'value');
-                                })
+                                });
                             }
                         };
                     });

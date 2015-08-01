@@ -1,5 +1,7 @@
 (function(define, undefined) {
 
+    /* global setTimeout, clearTimeout, require: false */
+
     'use strict';
 
     define(function() {
