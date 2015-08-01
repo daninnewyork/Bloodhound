@@ -455,6 +455,9 @@
                 },
 
                 notify = function notify(data) {
+                    if (promise._state !== States.PENDING) {
+                        return;
+                    }
                     promise._notifies.forEach(function iter(notifier) {
                         notifier(data);
                     });
@@ -1181,6 +1184,7 @@
                 if (length === 0) {
                     resolve({});
                 } else {
+                    notify(0);
                     promises.forEach(function(promise, index) {
                         var handler = settled.bind(null, keys[index]);
                         promise._failures.push(handler);
@@ -1227,6 +1231,7 @@
                 if (total === 0) {
                     resolve([]);
                 } else {
+                    update(0);
                     promises.forEach(function iter(child) {
                         child._failures.push(increment);
                         child._successes.push(increment);
@@ -1299,7 +1304,7 @@
                 throw new TypeError('Promise.some expects a numeric count to be provided.');
             }
 
-            return getArrayPromise(promises, function SomePromise(resolve, reject) {
+            return getArrayPromise(promises, function SomePromise(resolve, reject, notify) {
 
                 var numRejected = 0,
                     numResolved = 0,
@@ -1310,9 +1315,12 @@
                     increment = function increment(index, value) {
                         resolved[index] = value;
                         if (++numResolved >= count) {
+                            notify(100);
                             resolve(resolved.filter(function(value) {
                                 return value !== BAD_TOKEN;
                             }));
+                        } else {
+                            notify(Math.ceil((numResolved + numRejected) / count * 100));
                         }
                     },
                     checkPossible = function checkPossible(index, data) {
@@ -1325,7 +1333,10 @@
                                     var error = (rejection || empty).toString();
                                     return msg + '\n - ' + (error === empty ? fallback : error);
                                 }, numRejected + ' promises failed; rejection reasons:');
+                            notify(100);
                             reject(errorMessage);
+                        } else {
+                            notify(Math.ceil((numResolved + numRejected) / count * 100));
                         }
                     };
 
@@ -1334,6 +1345,7 @@
                 } else if (total === 0) {
                     resolve([]);
                 } else {
+                    notify(0);
                     promises.forEach(function iter(child, index) {
                         child._failures.push(checkPossible.bind(null, index));
                         child._successes.push(increment.bind(null, index));

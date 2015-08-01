@@ -814,7 +814,7 @@ define(['Promise'], function(Promise) {
 
             it('updates with percentage compled', function(done) {
                 var index = 0,
-                    percents = [25, 50, 75, 100];
+                    percents = [0, 25, 50, 75, 100];
                 Promise.settle([
                     Promise.delay(10),
                     Promise.delay(20),
@@ -907,6 +907,25 @@ define(['Promise'], function(Promise) {
                     expect(values).toEqual(['abc', 123456]);
                     done();
                 });
+            });
+
+            it('sends percent notifications', function(done) {
+                var index = 0,
+                    percents = [0, 25, 50, 100];
+                Promise.some([
+                    Promise.delay(10),
+                    Promise.delay(20),
+                    Promise.delay(35, new Error()),
+                    Promise.delay(60)
+                ], 4)
+                .notified(function(percent) {
+                    expect(percent).toBe(percents[index++]);
+                })
+                .catch(function() {
+                    expect(index).toBe(percents.length);
+                })
+                .finally(done)
+                .done();
             });
 
             it('creates chains', function() {
