@@ -846,6 +846,10 @@
          * registered timing collectors, if at least one promise
          * in the tree was actively tracked.
          * @function Bloodhound.Promise#done
+         * @param {Function} [handler] Optional function to invoke
+         *  when the promise chain is settled. The return value of
+         *  the handler has no impact on the promise chain or its
+         *  resolved value or rejection reason.
          * @returns {Promise}
          * @example
          * Promise.resolve('abc').trackAs('promise-1').done();
@@ -853,13 +857,25 @@
          * // both promises will be persisted to any registered
          * // collectors, but promise-2 will also throw an
          * // exception so you can respond to its rejection
+         * @example
+         * somePromiseMethod().done(function handler(valueOrReason) {
+         *   log('promise has settled', valueOrReason);
+         * });
          */
-        Promise.prototype.done = function done() {
+        Promise.prototype.done = function done(handler) {
             var persist = Timing.persistTimings.bind(this);
-            this._failures.push(err.bind(null, this));
-            this._failures.push(persist);
+            if (typeof handler === 'function') {
+                var wrap = function wrapHandler() {
+                    try {
+                        handler(this._data);
+                    } catch (e) {}
+                }.bind(this);
+                this._failures.push(wrap);
+                this._successes.push(wrap);
+            }
             this._successes.push(persist);
-            return this;
+            this._failures.push(persist);
+            this._failures.push(err.bind(null, this));
         };
 
         /**

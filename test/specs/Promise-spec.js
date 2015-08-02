@@ -461,7 +461,58 @@ define(['Promise'], function(Promise) {
             it('does not throw error if rejection caught before done', function(done) {
                 Promise.reject('rejected').catch(function(reason) {
                     expect(reason).toBe('rejected');
-                }).done().then(done);
+                }).done(done);
+            });
+
+            it('calls handler if one is passed', function(done) {
+                Promise.delay(20).done(done);
+            });
+
+            it('ignores non-function handlers', function() {
+                [null, {}, NaN, new Date()].forEach(function test(value) {
+                    Promise.resolve('abc').done(value);
+                });
+            });
+
+            it('invokes multiple handlers in order', function(done) {
+                var called = [],
+                    promise = Promise.delay(25);
+                promise.done(function() { called.push(1); });
+                promise.done(function() { called.push(2); });
+                promise.done(function() {
+                    expect(called).toEqual([1, 2]);
+                    done();
+                });
+            });
+
+            it('ignores exceptions in handler', function(done) {
+                var promise = Promise.delay(25);
+                promise.done(function() {
+                    throw new Error();
+                });
+                promise.done(done);
+            });
+
+            it('ignores promise returned by handler', function(done) {
+                var parent = Promise.delay(25, 'parent');
+                parent.done(function() {
+                    return Promise.delay(30, 'child');
+                });
+                parent.done(function(result) {
+                    expect(result).toBe('parent');
+                    done();
+                });
+            });
+
+            it('ignores values returned by handler', function(done) {
+                var parent = Promise.delay(25, 'parent');
+                parent.done(function() {
+                    return 'child';
+                });
+                parent.done(function(result) {
+                    expect(result).toBe('parent');
+                    done();
+                });
             });
 
             it('notifies collectors of timing if timing enabled', function(done) {
@@ -481,7 +532,7 @@ define(['Promise'], function(Promise) {
                 var collector = {collect: jasmine.unimplementedMethod_};
                 Promise.config.collectors.add(collector);
                 Promise.config.timing.disable();
-                Promise.delay(50, 'value').done().finally(function() {
+                Promise.delay(50, 'value').done(function() {
                     Promise.config.collectors.remove(collector);
                     Promise.config.timing.enable();
                     done();
@@ -1029,7 +1080,7 @@ define(['Promise'], function(Promise) {
                         Promise.delay(20, 'ghi')
                     ]).trackAs('parent', true);
                 Promise.config.collectors.add(collector);
-                promise.done().then(function() {
+                promise.done(function() {
                     expect(collector.collect).not.toHaveBeenCalled();
                     Promise.config.collectors.remove(collector);
                     done();
@@ -1054,7 +1105,7 @@ define(['Promise'], function(Promise) {
                 };
                 Promise.config.collectors.add(collector);
                 Promise.all([
-                    Promise.resolve('abc').trackAs('child-1', true).done(),
+                    Promise.resolve('abc').trackAs('child-1', true),
                     Promise.delay(30, 'def').trackAs('child-2', true),
                     Promise.delay(20, 'ghi').then(function hello() {})
                 ]).trackAs('active-parent').done();
@@ -1091,7 +1142,7 @@ define(['Promise'], function(Promise) {
 
                 parent.then(function callback() {
                     return child;
-                }).done().finally(function() {
+                }).done(function() {
                     expect(root._parent._trackName).toBe('callback');
                     done();
                 });
@@ -1427,7 +1478,10 @@ define(['Promise'], function(Promise) {
                     var remove = Promise.config.collectors.add({
                         collect: jasmine.unimplementedMethod_
                     });
-                    Promise.delay(10).trackAs('promise').done().finally(remove).then(done);
+                    Promise.delay(10).trackAs('promise').done(function() {
+                        remove();
+                        done();
+                    });
                 });
 
                 it('enable enables timing', function(done) {
@@ -1436,7 +1490,7 @@ define(['Promise'], function(Promise) {
                     var remove = Promise.config.collectors.add({
                         collect: done
                     });
-                    Promise.delay(10).trackAs('promise').done().finally(remove);
+                    Promise.delay(10).trackAs('promise').done(remove);
                 });
 
                 it('useSaneTimings works', function(done) {
