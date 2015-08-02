@@ -1239,6 +1239,55 @@ define(['Promise'], function(Promise) {
 
         describe('config', function() {
 
+            describe('warnIfDoneNotCalled', function() {
+
+                /* global console: false */
+
+                it('does not warn by default', function(done) {
+                    spyOn(console, 'warn');
+                    Promise.resolve();
+                    setTimeout(function() {
+                        expect(console.warn).not.toHaveBeenCalled();
+                        done();
+                    }, 20);
+                });
+
+                it('warns if enabled and done not called', function(done) {
+                    spyOn(console, 'warn');
+                    Promise.config.warnIfDoneNotCalled = true;
+                    Promise.resolve();
+                    setTimeout(function() {
+                        expect(console.warn).toHaveBeenCalled();
+                        done();
+                    }, 20);
+                });
+
+                it('does not warn if enabled and done called', function(done) {
+                    spyOn(console, 'warn');
+                    Promise.config.warnIfDoneNotCalled = true;
+                    Promise.resolve().done();
+                    setTimeout(function() {
+                        expect(console.warn).not.toHaveBeenCalled();
+                        done();
+                    }, 20);
+                });
+
+                it('does not warn if enabled and done called on child', function(done) {
+                    spyOn(console, 'warn');
+                    Promise.config.warnIfDoneNotCalled = true;
+                    Promise.delay(10)
+                        .then(function() {
+                            return Promise.delay(15);
+                        })
+                        .done();
+                    setTimeout(function() {
+                        expect(console.warn).not.toHaveBeenCalled();
+                        done();
+                    }, 20);
+                });
+
+            });
+
             describe('onUnhandledRejection', function() {
 
                 it('throws if non-function provided', function() {

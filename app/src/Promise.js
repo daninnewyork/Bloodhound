@@ -79,6 +79,15 @@
 
             noop = function noop() {},
 
+            doneNotCalled = function doneNotCalled(e) {
+                /* jshint -W117 */
+                if (!!console) {
+                    (console.warn || console.info || console.log)(
+                        'Call done() at the end of a promise chain.'
+                    );
+                }
+            },
+
             getStackTrace = function getStack(promise) {
 
                 var target,
@@ -103,9 +112,7 @@
                 target = target || promise;
 
                 while (!!target) {
-                    name = target._trackName ?
-                        (!target._isPassive ? 'trackAs: ' : 'function: ') + target._trackName :
-                        'constructor: Promise';
+                    name = target.toString();
                     result = name + sep + result;
                     target = target._parent;
                     sep = '\n at ';
@@ -496,7 +503,24 @@
                 }
             });
 
+            if (!!Promise.config.warnIfDoneNotCalled) {
+                // we use setTimeout because we want an
+                // empty execution context before making
+                // our check
+                setTimeout(function warnIfNecessary() {
+                    if (!promise._children.length && !promise._doneCalled) {
+                        doneNotCalled({promise: promise});
+                    }
+                });
+            }
+
         }
+
+        Promise.prototype.toString = function toString() {
+            return this._trackName ?
+                (!this._isPassive ? 'trackAs: ' : 'function: ') + this._trackName :
+                'constructor: Promise';
+        };
 
         /**
          * Registers optional success, failure, and notification callbacks
@@ -863,6 +887,7 @@
          * });
          */
         Promise.prototype.done = function done(handler) {
+            this._doneCalled = true;
             var persist = Timing.persistTimings.bind(this);
             if (typeof handler === 'function') {
                 var wrap = function wrapHandler() {
@@ -1433,6 +1458,23 @@
          * @namespace Bloodhound.Promise.config
          */
         Promise.config = {
+
+            /**
+             * Determines whether Bloodhound will log a warning in the console
+             * if the promise chain does not end in a call to `done()`. The
+             * Golden Rule of Promises is to always call `.done()` on a promise
+             * that is not being returned to another caller.
+             * @member {Boolean} Bloodhound.Promise.config.warnIfDoneNotCalled
+             * @default false
+             * @example
+             * Promise.config.warnIfDoneNotCalled = true;
+             * Promise.delay(15)
+             *    .then(...)
+             *    .catch(...);
+             *
+             * >> WARN: Call done() at the end of a promise chain.
+             */
+            warnIfDoneNotCalled : false,
 
             /**
              * Adds a handler that will be invoked if `done()` is
